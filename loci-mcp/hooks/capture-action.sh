@@ -10,20 +10,51 @@ PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${PLUGIN_DIR}/state"
 LOG_FILE="${STATE_DIR}/loci-actions.log"
 QUEUE_DIR="${STATE_DIR}/queue"
+ERROR_LOG="${STATE_DIR}/hook-errors.log"
 
 mkdir -p "$STATE_DIR" "$QUEUE_DIR"
 
-# Read hook input from stdin
-INPUT=$(cat)
+# Error handling function
+log_error() {
+    local msg="$1"
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    echo "[$timestamp] ERROR: $msg" >> "$ERROR_LOG" 2>/dev/null || true
+}
 
-HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty')
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+# Check if jq is available
+if ! command -v jq &> /dev/null; then
+    log_error "jq not found in PATH - hook will not capture actions"
+    # Graceful degradation: allow hook to complete without jq
+    exit 0
+fi
+
+# Read hook input from stdin with error handling
+if ! INPUT=$(cat 2>/dev/null); then
+    log_error "Failed to read input from stdin"
+    exit 0
+fi
+
+# Validate input is not empty
+if [ -z "$INPUT" ]; then
+    log_error "Received empty input"
+    exit 0
+fi
+
+# Extract fields with error handling
+HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null || echo "")
+SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || echo "")
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || echo "")
+CWD=$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-# Build the action record
-ACTION_RECORD=$(jq -n \
+# Validate minimum required fields
+if [ -z "$TOOL_NAME" ]; then
+    log_error "Missing TOOL_NAME in hook input"
+    exit 0
+fi
+
+# Build the action record with error handling
+if ! ACTION_RECORD=$(jq -n \
   --arg event "$HOOK_EVENT" \
   --arg session "$SESSION_ID" \
   --arg tool "$TOOL_NAME" \
@@ -38,7 +69,10 @@ ACTION_RECORD=$(jq -n \
     timestamp: $ts,
     tool_input: ($input.tool_input // {}),
     tool_response: ($input.tool_response // null)
-  }')
+  }' 2>/dev/null); then
+    log_error "Failed to build action record for tool: $TOOL_NAME"
+    exit 0
+fi
 
 # ---------------------------------------------------------------
 # C++ focused action classification
@@ -199,37 +233,47 @@ ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
     }
   }')
 
-# Write to action log
-echo "$ENRICHED_RECORD" >> "$LOG_FILE"
+# Write to action log with error handling
+if ! echo "$ENRICHED_RECORD" >> "$LOG_FILE" 2>/dev/null; then
+    log_error "Failed to write to action log"
+fi
 
-# Queue for bridge processing
+# Queue for bridge processing with error handling
 QUEUE_FILE="${QUEUE_DIR}/${TIMESTAMP//[:.]/-}_${TOOL_NAME}.json"
-echo "$ENRICHED_RECORD" > "$QUEUE_FILE"
+if ! echo "$ENRICHED_RECORD" > "$QUEUE_FILE" 2>/dev/null; then
+    log_error "Failed to queue action: $QUEUE_FILE"
+fi
 
-# Signal bridge if running
+# Signal bridge if running (gracefully handle if bridge is not running)
 BRIDGE_PID_FILE="${STATE_DIR}/bridge.pid"
-if [ -f "$BRIDGE_PID_FILE" ] && kill -0 "$(cat "$BRIDGE_PID_FILE")" 2>/dev/null; then
-  kill -USR1 "$(cat "$BRIDGE_PID_FILE")" 2>/dev/null || true
+if [ -f "$BRIDGE_PID_FILE" ]; then
+    BRIDGE_PID=$(cat "$BRIDGE_PID_FILE" 2>/dev/null || echo "")
+    if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
+        kill -USR1 "$BRIDGE_PID" 2>/dev/null || true
+    fi
 fi
 
 # For PreToolUse: inject LOCI warnings into Claude's context
 if [ "$HOOK_EVENT" = "PreToolUse" ]; then
   WARNINGS_FILE="${STATE_DIR}/loci-warnings.json"
   if [ -f "$WARNINGS_FILE" ]; then
-    for file in $(echo "$FILES_INVOLVED" | jq -r '.[]' 2>/dev/null); do
-      WARNING=$(jq -r --arg f "$file" '
-        .warnings[]? | select(.file == $f and .active == true) | .message
-      ' "$WARNINGS_FILE" 2>/dev/null)
-      if [ -n "$WARNING" ]; then
-        jq -n --arg msg "LOCI Warning: $WARNING" '{
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            additionalContext: $msg
-          }
-        }'
-        exit 0
+    while IFS= read -r file; do
+      if [ -n "$file" ]; then
+        WARNING=$(jq -r --arg f "$file" '
+          .warnings[]? | select(.file == $f and .active == true) | .message
+        ' "$WARNINGS_FILE" 2>/dev/null || echo "")
+        if [ -n "$WARNING" ]; then
+          if jq -n --arg msg "LOCI Warning: $WARNING" '{
+            hookSpecificOutput: {
+              hookEventName: "PreToolUse",
+              additionalContext: $msg
+            }
+          }' 2>/dev/null; then
+            exit 0
+          fi
+        fi
       fi
-    done
+    done < <(echo "$FILES_INVOLVED" | jq -r '.[]' 2>/dev/null || true)
   fi
 fi
 
@@ -238,10 +282,16 @@ if [ "$HOOK_EVENT" = "PostToolUse" ]; then
   case "$ACTION_TYPE" in
     cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff)
       ANALYSIS_QUEUE="${STATE_DIR}/analysis-queue"
-      mkdir -p "$ANALYSIS_QUEUE"
-      echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json"
+      if mkdir -p "$ANALYSIS_QUEUE" 2>/dev/null; then
+        if ! echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json" 2>/dev/null; then
+          log_error "Failed to queue for analysis: $ACTION_TYPE"
+        fi
+      else
+        log_error "Failed to create analysis queue directory"
+      fi
       ;;
   esac
 fi
 
+# Graceful exit - even if there were errors, don't fail the hook
 exit 0
