@@ -1,0 +1,11 @@
+{
+  "mcp_server_url": "https://dev.mcp.loci-dev.net/mcp",
+  "mcp_server_name": "loci-mcp",
+  "project_id": "",
+  "org_id": "",
+  "poll_interval": 2.0,
+  "batch_size": 10,
+  "analysis_timeout": 30.0,
+  "enabled": true,
+  "_comment": "The LOCI MCP server is configured in .mcp.json at project root. Claude Code connects to it directly. This config is for the local hook bridge."
+}
