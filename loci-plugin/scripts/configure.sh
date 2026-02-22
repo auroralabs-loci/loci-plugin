@@ -84,28 +84,10 @@ echo ""
 
 # Get or use default values
 MCP_URL="${LOCI_MCP_URL:-https://dev.mcp.loci-dev.net/mcp}"
-PROJECT_ID="${LOCI_PROJECT_ID:-}"
-ORG_ID="${LOCI_ORG_ID:-}"
 
 # MCP Server URL
 read -p "MCP Server URL [$MCP_URL]: " -r input
 MCP_URL="${input:-$MCP_URL}"
-
-# Project ID
-while [ -z "$PROJECT_ID" ]; do
-    read -p "Project ID (required): " -r PROJECT_ID
-    if [ -z "$PROJECT_ID" ]; then
-        echo -e "${RED}Project ID is required${NC}"
-    fi
-done
-
-# Organization ID
-while [ -z "$ORG_ID" ]; do
-    read -p "Organization ID (required): " -r ORG_ID
-    if [ -z "$ORG_ID" ]; then
-        echo -e "${RED}Organization ID is required${NC}"
-    fi
-done
 
 echo ""
 
@@ -184,16 +166,12 @@ mkdir -p "$(dirname "$CONFIG_FILE")"
 # Build configuration JSON
 CONFIG_JSON=$(jq -n \
   --arg url "$MCP_URL" \
-  --arg project "$PROJECT_ID" \
-  --arg org "$ORG_ID" \
   --arg poll "$POLL_INTERVAL" \
   --argjson batch "$BATCH_SIZE" \
   --arg timeout "$ANALYSIS_TIMEOUT" \
   '{
     "mcp_server_url": $url,
     "mcp_server_name": "loci-mcp",
-    "project_id": $project,
-    "org_id": $org,
     "poll_interval": ($poll | tonumber),
     "batch_size": ($batch | tonumber),
     "analysis_timeout": ($timeout | tonumber),
@@ -207,8 +185,6 @@ echo -e "${GREEN}✓${NC} Configuration saved to $CONFIG_FILE"
 echo ""
 echo -e "${GREEN}Configuration Summary:${NC}"
 echo "  MCP Server: $MCP_URL"
-echo "  Project ID: $PROJECT_ID"
-echo "  Org ID: $ORG_ID"
 echo "  Poll Interval: ${POLL_INTERVAL}s"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Timeout: ${ANALYSIS_TIMEOUT}s"

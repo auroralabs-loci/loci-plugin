@@ -82,7 +82,7 @@ apk add jq               # Alpine
 ```bash
 git clone https://github.com/auroralabs/loci-plugin.git
 cd loci-plugin
-./loci-mcp/setup.sh
+./loci-plugin/setup.sh
 ```
 
 `setup.sh` will:
@@ -93,17 +93,6 @@ cd loci-plugin
 - Create `.mcp.json` at the project root if it doesn't exist, pointing to the LOCI server
 
 After setup, **restart Claude Code** to activate the hooks.
-
-### Configure project credentials
-
-Edit `loci-mcp/config/loci.json` and set your project and org IDs (obtain from AuroraLabs):
-
-```json
-{
-  "project_id": "your-project-id",
-  "org_id": "your-org-id"
-}
-```
 
 ---
 
@@ -125,7 +114,7 @@ Created automatically by `setup.sh`. Tells Claude Code where to find the LOCI se
 }
 ```
 
-### `loci-mcp/config/loci.json` — Local bridge settings
+### `loci-plugin/config/loci.json` — Local bridge settings (auto-created by `configure.sh`)
 
 Controls the local `loci_bridge.py` process:
 
@@ -133,8 +122,6 @@ Controls the local `loci_bridge.py` process:
 {
   "mcp_server_url": "https://dev.local.mcp.loci-dev.net/mcp",
   "mcp_server_name": "loci-mcp",
-  "project_id": "",
-  "org_id": "",
   "poll_interval": 2.0,
   "batch_size": 10,
   "analysis_timeout": 30.0,
@@ -146,8 +133,6 @@ Controls the local `loci_bridge.py` process:
 |-----------|-------------|
 | `mcp_server_url` | Recorded in session context and logged at bridge startup; the bridge itself makes no outbound HTTP calls |
 | `mcp_server_name` | Must match the server name registered in `.mcp.json` |
-| `project_id` | Optional — project identifier for tracking (AuroraLabs) |
-| `org_id` | Optional — organization identifier for tracking (AuroraLabs) |
 | `poll_interval` | Seconds between queue-processing cycles (default: `2.0`) |
 | `batch_size` | Max actions to process per cycle (default: `10`) |
 | `analysis_timeout` | Reserved for future use |
@@ -158,7 +143,7 @@ Controls the local `loci_bridge.py` process:
 An interactive setup wizard is also available:
 
 ```bash
-./loci-mcp/scripts/configure.sh
+./loci-plugin/scripts/configure.sh
 ```
 
 ---
@@ -175,7 +160,7 @@ An interactive setup wizard is also available:
        │ Hook Events                           │ MCP / SSE
        ▼                                       ▼
 ┌────────────────────────┐   ┌────────────────────────────────┐
-│  hooks.json            │   │  LOCI MCP Server (remote)      │
+│  hooks/hooks.json      │   │  LOCI MCP Server (remote)      │
 │  ├─ SessionStart/End   │   │  ├─ get_assembly_block_timings │
 │  ├─ PreToolUse         │   │  └─ get_assembly_block_timings │
 │  ├─ PostToolUse        │   │       _per_function            │
@@ -302,54 +287,54 @@ Claude:
 
 ```bash
 # Active warnings
-cat loci-mcp/state/loci-warnings.json | jq .
+cat loci-plugin/state/loci-warnings.json | jq .
 
 # Session action timeline
-cat loci-mcp/state/loci-context.json | jq .
+cat loci-plugin/state/loci-context.json | jq .
 
 # Bridge metrics
-cat loci-mcp/state/loci-metrics.json | jq .
+cat loci-plugin/state/loci-metrics.json | jq .
 
 # All captured actions (live tail)
-tail -f loci-mcp/state/loci-actions.log
+tail -f loci-plugin/state/loci-actions.log
 
 # Hook errors
-cat loci-mcp/state/hook-errors.log
+cat loci-plugin/state/hook-errors.log
 
 # Bridge process log
-tail -20 loci-mcp/state/bridge.log
+tail -20 loci-plugin/state/bridge.log
 ```
 
 ### Session analysis CLI
 
 ```bash
 # Current session stats
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --status
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --status
 
 # Print execution graph tree
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --graph
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --graph
 
 # Show most-touched files
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --hot-files
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --hot-files
 
 # Diff two sessions
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --diff <session_a> <session_b>
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --diff <session_a> <session_b>
 
 # Export session as JSON (for CI/CD)
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --export > loci-report.json
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --export > loci-report.json
 ```
 
 ### Hook performance monitoring
 
 ```bash
 # One-time report
-python3 loci-mcp/scripts/monitor-hooks.py
+python3 loci-plugin/scripts/monitor-hooks.py
 
 # Continuous (every 5 s)
-python3 loci-mcp/scripts/monitor-hooks.py --watch --interval 5
+python3 loci-plugin/scripts/monitor-hooks.py --watch --interval 5
 
 # JSON output (for CI/CD)
-python3 loci-mcp/scripts/monitor-hooks.py --json
+python3 loci-plugin/scripts/monitor-hooks.py --json
 
 # Bridge process resource usage
 ps aux | grep loci_bridge.py
@@ -361,10 +346,10 @@ ps aux | grep loci_bridge.py
 
 ### LOCI warnings not appearing
 
-1. Check plugin is enabled: `cat loci-mcp/config/loci.json | jq .enabled`
+1. Check plugin is enabled: `cat loci-plugin/config/loci.json | jq .enabled`
 2. Check bridge is running: `ps aux | grep loci_bridge`
-3. Check bridge log: `tail -20 loci-mcp/state/bridge.log`
-4. Check hook errors: `cat loci-mcp/state/hook-errors.log`
+3. Check bridge log: `tail -20 loci-plugin/state/bridge.log`
+4. Check hook errors: `cat loci-plugin/state/hook-errors.log`
 
 ### MCP server connection failed
 
@@ -379,24 +364,23 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 Also verify:
 - `.mcp.json` exists at the project root with the correct URL
-- `cat loci-mcp/config/loci.json | jq '.project_id, .org_id'` shows your credentials
 
 ### No actions being captured
 
-1. Verify hooks are firing: `tail -f loci-mcp/state/loci-actions.log`
+1. Verify hooks are firing: `tail -f loci-plugin/state/loci-actions.log`
 2. Check `jq` is installed: `which jq`
-3. Check state dir permissions: `ls -la loci-mcp/state/`
+3. Check state dir permissions: `ls -la loci-plugin/state/`
 4. Review Claude Code hook logs in Claude Code settings
 
 ### High hook overhead
 
 ```bash
 # Diagnose
-python3 loci-mcp/scripts/monitor-hooks.py
+python3 loci-plugin/scripts/monitor-hooks.py
 
 # Reduce bridge load
 jq '.batch_size = 5 | .poll_interval = 5' \
-  loci-mcp/config/loci.json > .tmp && mv .tmp loci-mcp/config/loci.json
+  loci-plugin/config/loci.json > .tmp && mv .tmp loci-plugin/config/loci.json
 ```
 
 ---
@@ -407,13 +391,15 @@ jq '.batch_size = 5 | .poll_interval = 5' \
 loci-plugin/
 ├── README.md
 ├── CHANGES.md
-└── loci-mcp/
-    ├── manifest.json              # Plugin metadata and capabilities
-    ├── hooks.json                 # Claude Code hook registration
+└── loci-plugin/
+    ├── .claude-plugin/
+    │   └── plugin.json            # Plugin manifest (name, version, author)
+    ├── .mcp.json                  # Claude Code MCP server registration
     ├── setup.sh                   # Installation script
     ├── config/
     │   └── loci.json              # Local bridge configuration
     ├── hooks/
+    │   ├── hooks.json             # Claude Code hook registration
     │   ├── capture-action.sh      # Action classifier + warning injector
     │   ├── session-lifecycle.sh   # SessionStart / SessionEnd handler
     │   └── stop-analysis.sh       # Stop hook — surfaces critical warnings
@@ -425,20 +411,19 @@ loci-plugin/
     ├── scripts/
     │   ├── configure.sh           # Interactive configuration wizard
     │   └── monitor-hooks.py       # Hook performance monitor
-    ├── state/                     # Runtime state (auto-created)
-    │   ├── loci-warnings.json     # Active heuristic warnings
-    │   ├── loci-context.json      # Session action timeline
-    │   ├── loci-metrics.json      # Bridge metrics
-    │   ├── loci-actions.log       # All captured actions
-    │   ├── bridge.log             # Bridge process log
-    │   ├── hook-errors.log        # Hook script errors
-    │   ├── queue/                 # Actions waiting for bridge
-    │   ├── analysis-queue/        # High-priority actions (compile/binary)
-    │   └── sessions/              # Per-session manifests
-    └── examples/
-        ├── performance-optimization/
-        ├── memory-debugging/
-        └── build-configuration/
+    ├── skills/
+    │   └── analyze/
+    │       └── SKILL.md           # /loci-mcp:analyze skill
+    └── state/                     # Runtime state (auto-created)
+        ├── loci-warnings.json     # Active heuristic warnings
+        ├── loci-context.json      # Session action timeline
+        ├── loci-metrics.json      # Bridge metrics
+        ├── loci-actions.log       # All captured actions
+        ├── bridge.log             # Bridge process log
+        ├── hook-errors.log        # Hook script errors
+        ├── queue/                 # Actions waiting for bridge
+        ├── analysis-queue/        # High-priority actions (compile/binary)
+        └── sessions/              # Per-session manifests
 ```
 
 ---
@@ -447,11 +432,11 @@ loci-plugin/
 
 ### Add custom action types
 
-Edit `loci-mcp/hooks/capture-action.sh` — add branches to the `classify_action()` function for any tool patterns specific to your project.
+Edit `loci-plugin/hooks/capture-action.sh` — add branches to the `classify_action()` function for any tool patterns specific to your project.
 
 ### Add custom heuristics
 
-Extend the `CppAnalyzer` class in `loci-mcp/lib/loci_bridge.py` — add entries to `PERF_PATTERNS` or `COMPILE_WARNINGS` for domain-specific rules.
+Extend the `CppAnalyzer` class in `loci-plugin/lib/loci_bridge.py` — add entries to `PERF_PATTERNS` or `COMPILE_WARNINGS` for domain-specific rules.
 
 ---
 
@@ -463,4 +448,6 @@ Extend the `CppAnalyzer` class in `loci-mcp/lib/loci_bridge.py` — add entries 
 
 ---
 
-**Get started:** `./loci-mcp/setup.sh`
+**Get started:** `./loci-plugin/setup.sh`
+
+**Test locally:** `claude --plugin-dir ./loci-plugin`

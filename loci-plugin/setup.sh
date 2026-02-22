@@ -73,10 +73,10 @@ echo "  Assembly:   $NUM_ASM files"
 
 # 6. Validate hooks.json
 echo -n "Validating hooks... "
-if jq empty "${PLUGIN_DIR}/hooks.json" 2>/dev/null; then
+if jq empty "${PLUGIN_DIR}/hooks/hooks.json" 2>/dev/null; then
   echo -e "${GREEN}OK${NC}"
 else
-  echo -e "${RED}INVALID hooks.json${NC}"
+  echo -e "${RED}INVALID hooks/hooks.json${NC}"
   exit 1
 fi
 

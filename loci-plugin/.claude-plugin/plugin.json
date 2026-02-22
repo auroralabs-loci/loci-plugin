@@ -1,0 +1,11 @@
+{
+  "name": "loci-mcp",
+  "version": "1.2.0",
+  "description": "LOCI Execution-Aware Plugin for C++ — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis",
+  "author": {
+    "name": "AuroraLabs",
+    "url": "https://www.auroralabs.com/"
+  },
+  "homepage": "https://www.auroralabs.com/",
+  "keywords": ["cpp", "embedded", "performance", "timing", "cortex-m4", "assembly", "loci"]
+}

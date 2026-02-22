@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "loci-mcp": {
+      "type": "sse",
+      "url": "https://dev.local.mcp.loci-dev.net/mcp"
+    }
+  }
+}

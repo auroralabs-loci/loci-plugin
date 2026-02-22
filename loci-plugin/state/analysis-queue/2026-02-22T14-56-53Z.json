@@ -1,0 +1,29 @@
+{
+  "event": "PostToolUse",
+  "session_id": "205b8db0-00ee-4578-af9c-277a6b5f0ead",
+  "tool_name": "Bash",
+  "cwd": "/Users/ronen/dev/aurora/test_rami",
+  "timestamp": "2026-02-22T14:56:53Z",
+  "tool_input": {
+    "command": "g++ -O2 -o random_counter random_counter.cpp 2>&1",
+    "description": "Compile random_counter.cpp with O2 optimization"
+  },
+  "tool_response": {
+    "stdout": "",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "action_type": "cpp_compile",
+  "files_involved": [
+    "random_counter"
+  ],
+  "cpp_context": {
+    "compiler_flags": [
+      "-O2"
+    ],
+    "output_binary": "random_counter",
+    "optimization_level": "-O2"
+  }
+}

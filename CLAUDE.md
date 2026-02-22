@@ -110,8 +110,6 @@ Two separate configs must stay consistent:
 - **`.mcp.json`** (project root) — Claude Code's MCP connection URL; created by `setup.sh`
 - **`loci-plugin/config/loci.json`** — Bridge settings; `mcp_server_name` must match the server name in `.mcp.json`
 
-Set `project_id` and `org_id` in `loci-plugin/config/loci.json` to enable AuroraLabs tracking (optional but required for the remote LOCI server to associate sessions with your account).
-
 ### MCP server tools
 
 Supported architectures for timing predictions: `cortex-a53`, `cortex-m4`, `tc399`.
