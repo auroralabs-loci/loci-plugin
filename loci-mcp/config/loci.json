@@ -1,5 +1,5 @@
 {
-  "mcp_server_url": "https://dev.mcp.loci-dev.net/mcp",
+  "mcp_server_url": "https://dev.local.mcp.loci-dev.net/mcp",
   "mcp_server_name": "loci-mcp",
   "project_id": "",
   "org_id": "",
