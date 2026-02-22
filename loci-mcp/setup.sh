@@ -96,7 +96,7 @@ else
   echo '{
   "mcpServers": {
     "loci-mcp": {
-      "url": "https://dev.mcp.loci-dev.net/mcp"
+      "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }
   }
 }' > "${PROJECT_ROOT}/.mcp.json"

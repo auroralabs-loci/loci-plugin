@@ -1,90 +1,140 @@
-# LOCI MCP Plugin for C++ Execution-Aware Analysis
+# LOCI MCP Plugin for Claude Code
 
-Transform Claude Code into a performance-aware C++ development assistant that understands compiled binaries and execution behavior.
+Gives Claude Code execution-aware C++ analysis by capturing your build workflow and providing assembly-level timing predictions for embedded targets.
 
-## Overview
+## What it does
 
-The LOCI MCP Plugin captures your entire C++ engineering workflow — from compilation flags to binary artifacts — and streams contextual insights to the AuroraLabs LOCI MCP server for binary-level performance analysis, regression detection, and optimization recommendations.
+The plugin has two sides:
 
-### Key Features
+**Local (hooks + bridge)** — hooks into Claude Code to capture every compilation, binary analysis, profiling command, and source edit. A local Python bridge (`loci_bridge.py`) runs heuristic analysis and injects performance/safety warnings back into Claude's context before it touches your code.
 
-✨ **Execution-Aware Analysis**
-- Captures compilation commands, flags, and optimization levels
-- Tracks binary artifacts and assembly files
-- Monitors performance profiling, debugging, and static analysis
-- Builds execution dependency graphs for regression detection
+**Remote (LOCI MCP server)** — Claude Code connects directly to the AuroraLabs LOCI MCP server, which predicts execution time in nanoseconds for assembly blocks on specific embedded hardware. Claude extracts assembly from your binaries using `objdump` or `readelf`, sends it to LOCI, and gets back timing predictions with standard deviation.
 
-🎯 **Proactive Guidance**
-- Real-time performance pattern detection (virtual dispatch, heap allocation in loops, etc.)
-- Compilation warnings (missing optimization flags, unsafe casts)
-- Memory safety checks (large stack arrays, unsafe operations)
-- Pre-action warnings injected before code modifications
+---
 
-📊 **Comprehensive Tracking**
-- Full session lifecycle management
-- Hot file detection (identify performance-critical code)
-- Session diffing for regression analysis
-- Execution graph visualization
+## MCP Tools
+
+The LOCI server (v1.25.0) exposes two tools. Claude calls them as `mcp__loci-mcp__<name>`.
+
+### `get_assembly_block_timings`
+
+Predicts execution time for **multiple functions** in one call.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `csv_text` | string | CSV with columns `function_name` and `assembly_code` |
+| `architecture` | string | Target architecture (see below) |
+
+**Returns:** CSV with columns `function_name`, `execution_time_ns`, `std_dev_ns`
+
+**Example `csv_text`:**
+```
+function_name,assembly_code
+process_frame,"push {r4-r7, lr}\n ldr r3, [r0]\n ..."
+update_state,"push {r4, lr}\n vmov.f32 s0, #0\n ..."
+```
+
+---
+
+### `get_assembly_block_timings_per_function`
+
+Predicts execution time for a **single function**.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `function_name` | string | Name of the function |
+| `assembly_code` | string | Full assembly of the function |
+| `architecture` | string | Target architecture (see below) |
+
+**Returns:** `execution_time_ns` and `std_dev_ns` for the function
+
+---
+
+### Supported Architectures
+
+| Value | Hardware |
+|-------|----------|
+| `cortex-a53` | ARM Cortex-A53 — embedded Linux, application cores |
+| `cortex-m4` | ARM Cortex-M4 — microcontrollers, RTOS |
+| `tc399` | Infineon AURIX TC399 — automotive |
+
+---
 
 ## Installation
 
 ### Prerequisites
 
-- **Claude Code** >= 1.0.0
-- **jq** (JSON query tool)
-- **C++ Compiler** (g++, clang++, or gcc)
+| Tool | Purpose |
+|------|---------|
+| `jq` | JSON processing in hook scripts |
+| `python3` | Local bridge process |
+| `g++` or `clang++` | C++ compiler (for project detection) |
 
-### Quick Start
+**Install jq:**
+```bash
+brew install jq          # macOS
+sudo apt-get install jq  # Ubuntu/Debian
+apk add jq               # Alpine
+```
 
-1. **Clone the plugin:**
-   ```bash
-   git clone https://github.com/auroralabs/loci-plugin.git
-   cd loci-plugin
-   ```
+### Setup
 
-2. **Install dependencies:**
-   ```bash
-   # macOS
-   brew install jq
+```bash
+git clone https://github.com/auroralabs/loci-plugin.git
+cd loci-plugin
+./loci-mcp/setup.sh
+```
 
-   # Linux (Ubuntu/Debian)
-   sudo apt-get install jq
+`setup.sh` will:
+- Verify `jq` and `python3` are installed
+- Set execute permissions on all scripts
+- Create state directories (`state/queue/`, `state/sessions/`, `state/analysis-queue/`)
+- Detect your C++ project (compiler, build system, architecture, source files)
+- Create `.mcp.json` at the project root if it doesn't exist, pointing to the LOCI server
 
-   # Linux (Alpine)
-   apk add jq
-   ```
+After setup, **restart Claude Code** to activate the hooks.
 
-3. **Run the setup script:**
-   ```bash
-   ./loci-mcp/setup.sh
-   ```
+### Configure project credentials
 
-4. **Configure your project:**
-   - Edit `loci-mcp/config/loci.json` with your LOCI MCP server details
-   - Set `project_id` and `org_id` (obtain from AuroraLabs)
-   - Verify the MCP server URL is correct
-
-5. **Verify installation:**
-   ```bash
-   # Check if hooks are registered
-   ls -la loci-mcp/hooks/
-
-   # Verify configuration
-   cat loci-mcp/config/loci.json
-   ```
-
-## Configuration
-
-### MCP Server Setup
-
-The plugin requires connection to the AuroraLabs LOCI MCP server. Configure it in `loci-mcp/config/loci.json`:
+Edit `loci-mcp/config/loci.json` and set your project and org IDs (obtain from AuroraLabs):
 
 ```json
 {
-  "mcp_server_url": "https://dev.mcp.loci-dev.net/mcp",
-  "mcp_server_name": "loci-mcp",
   "project_id": "your-project-id",
-  "org_id": "your-org-id",
+  "org_id": "your-org-id"
+}
+```
+
+---
+
+## Configuration
+
+There are two separate config files:
+
+### `.mcp.json` — Claude Code's MCP connection (project root)
+
+Created automatically by `setup.sh`. Tells Claude Code where to find the LOCI server:
+
+```json
+{
+  "mcpServers": {
+    "loci-mcp": {
+      "url": "https://dev.local.mcp.loci-dev.net/mcp"
+    }
+  }
+}
+```
+
+### `loci-mcp/config/loci.json` — Local bridge settings
+
+Controls the local `loci_bridge.py` process:
+
+```json
+{
+  "mcp_server_url": "https://dev.local.mcp.loci-dev.net/mcp",
+  "mcp_server_name": "loci-mcp",
+  "project_id": "",
+  "org_id": "",
   "poll_interval": 2.0,
   "batch_size": 10,
   "analysis_timeout": 30.0,
@@ -92,325 +142,325 @@ The plugin requires connection to the AuroraLabs LOCI MCP server. Configure it i
 }
 ```
 
-**Parameters:**
-- `mcp_server_url`: LOCI MCP server endpoint
-- `project_id`: Project identifier (required for tracking)
-- `org_id`: Organization identifier (required for tracking)
-- `poll_interval`: How often to check for queued actions (seconds)
-- `batch_size`: Max actions to process per poll cycle
-- `analysis_timeout`: Max time to wait for analysis (seconds)
-- `enabled`: Enable/disable plugin (true/false)
+| Parameter | Description |
+|-----------|-------------|
+| `mcp_server_url` | Recorded in session context and logged at bridge startup; the bridge itself makes no outbound HTTP calls |
+| `mcp_server_name` | Must match the server name registered in `.mcp.json` |
+| `project_id` | Optional — project identifier for tracking (AuroraLabs) |
+| `org_id` | Optional — organization identifier for tracking (AuroraLabs) |
+| `poll_interval` | Seconds between queue-processing cycles (default: `2.0`) |
+| `batch_size` | Max actions to process per cycle (default: `10`) |
+| `analysis_timeout` | Reserved for future use |
+| `enabled` | Enable/disable the plugin (default: `true`) |
 
-### Using the Configuration Wizard
+### Interactive wizard
 
-For easier setup, run the interactive configuration wizard:
+An interactive setup wizard is also available:
 
 ```bash
 ./loci-mcp/scripts/configure.sh
 ```
 
-This will guide you through:
-1. Validating required tools
-2. Setting up MCP server connection
-3. Detecting your C++ project environment
-4. Testing the connection
+---
 
-## Usage
+## How it works
 
-### Automatic Integration
-
-Once installed, the plugin automatically:
-- ✅ Captures all Claude Code tool uses (Bash, Write, Edit, Task, etc.)
-- ✅ Classifies actions (C++ compilation, binary analysis, profiling, etc.)
-- ✅ Injects warnings before code modifications
-- ✅ Queues important actions for LOCI server analysis
-- ✅ Tracks session metadata and execution graphs
-
-### When LOCI Activates
-
-Claude Code will automatically use LOCI insights when:
-
-**Performance Optimization**
-```
-User: "Optimize this C++ function for speed"
-→ LOCI captures baseline, analyzes after changes, compares
-```
-
-**Binary Analysis**
-```
-User: "Why is this executable 5MB?"
-→ LOCI analyzes binary structure and provides insights
-```
-
-**Memory Issues**
-```
-User: "This code has memory leaks"
-→ LOCI suggests profiling tools and analysis patterns
-```
-
-**Build Problems**
-```
-User: "Fix the compilation error"
-→ LOCI analyzes compiler flags and suggests optimizations
-```
-
-### Manual Tool Access
-
-Query LOCI data directly using the MCP tools:
-
-```bash
-# Check current session status
-mcp__loci-mcp__get_session_context
-
-# Get performance insights
-mcp__loci-mcp__analyze_performance
-
-# Compare execution graphs
-mcp__loci-mcp__compare_sessions
-```
-
-## Example Workflows
-
-### Workflow 1: Optimizing a Hot Function
+### Architecture
 
 ```
-1. User: "This function is called 1000x per frame, optimize it"
-2. LOCI captures the baseline compilation
-3. Claude analyzes the code with heuristics:
-   - Detects virtual dispatch in hot path
-   - Identifies unnecessary heap allocation
-   - Suggests loop unrolling opportunity
-4. Claude applies optimizations
-5. LOCI captures new compilation, performs regression analysis
-6. Claude shows: "10% faster, 8% smaller binary"
+┌──────────────────────────────────────────────────────────────┐
+│                        Claude Code                           │
+│  (calls mcp__loci-mcp__ tools; receives hook warnings)       │
+└──────┬───────────────────────────────────────┬───────────────┘
+       │ Hook Events                           │ MCP / SSE
+       ▼                                       ▼
+┌────────────────────────┐   ┌────────────────────────────────┐
+│  hooks.json            │   │  LOCI MCP Server (remote)      │
+│  ├─ SessionStart/End   │   │  ├─ get_assembly_block_timings │
+│  ├─ PreToolUse         │   │  └─ get_assembly_block_timings │
+│  ├─ PostToolUse        │   │       _per_function            │
+│  └─ Stop               │   │  Targets: cortex-a53,          │
+└──────┬─────────────────┘   │  cortex-m4, tc399              │
+       │                     └────────────────────────────────┘
+       ▼
+┌──────────────────────────────────────────────────────────────┐
+│  capture-action.sh                                           │
+│  ├─ Classify action (cpp_compile, binary_analysis, etc.)    │
+│  ├─ Extract compiler flags, output binary, -O level         │
+│  ├─ PreToolUse: inject active warnings into Claude context  │
+│  └─ PostToolUse: queue actions for bridge + analysis        │
+└──────────────────────┬───────────────────────────────────────┘
+                       │ queue/  (local JSON files)
+                       ▼
+┌──────────────────────────────────────────────────────────────┐
+│  loci_bridge.py  (local async process)                       │
+│  ├─ CppAnalyzer: detect perf patterns, unsafe casts,        │
+│  │   large stack arrays, bad compiler flags                 │
+│  ├─ Writes loci-warnings.json  → picked up by PreToolUse   │
+│  ├─ Writes loci-context.json   → session action timeline   │
+│  └─ Writes loci-metrics.json   → bridge stats              │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### Workflow 2: Memory Leak Investigation
+> `loci_bridge.py` is a **local-only** process. It performs heuristic analysis and manages state files. The LOCI MCP server is called directly by Claude Code, not by the bridge.
 
-```
-1. User: "Memory usage grows over time"
-2. Claude suggests: valgrind, addresssanitizer profiling
-3. LOCI captures profiling commands
-4. Claude analyzes results with LOCI insights
-5. LOCI detects: heap allocation in loop, missing cleanup
-6. Claude provides fix with explanation
-```
+### Hook events
 
-### Workflow 3: Build System Configuration
+| Hook | Trigger | What it does |
+|------|---------|--------------|
+| `SessionStart` | Session opens | Creates session manifest, detects C++ project context, starts `loci_bridge.py` |
+| `PreToolUse` | Before Bash / Write / Edit / Task | Injects active LOCI warnings into Claude's context for the files about to be touched |
+| `PostToolUse` | After Bash / Write / Edit | Classifies the action, extracts C++ context, queues it for bridge analysis |
+| `SessionEnd` | Session closes | Marks session complete, generates and queues summary |
+| `Stop` | Claude finishes responding | Reports critical warnings; can block Claude from continuing if critical issues are found |
 
-```
-1. User: "CMakeLists.txt is too complex"
-2. LOCI detects: -O0 used, debug symbols in release build
-3. Claude suggests: separate debug/release configs
-4. LOCI validates: new build produces optimal flags
-```
+### Action types captured
 
-## Monitoring & Debugging
+The hook classifies every tool use into one of these types:
 
-### View Plugin Status
+**Bash commands:**
+`cpp_compile`, `cpp_build`, `cpp_link`, `binary_analysis`, `assembly`, `performance_profiling`, `debugging`, `static_analysis`, `binary_execution`, `binary_diff`, `dependency_install`, `cpp_test`, `version_control`, `shell_command`
 
-```bash
-# Check session state
-cat loci-mcp/state/loci-context.json
+**File operations (Write / Edit):**
+`cpp_source_modification`, `assembly_modification`, `build_config_modification`, `linker_config_modification`, `config_modification`, `documentation`, `file_modification`
 
-# View active warnings
-cat loci-mcp/state/loci-warnings.json
+**Read operations:**
+`binary_inspection`, `cpp_code_analysis`, `code_analysis`
 
-# Check performance metrics
-cat loci-mcp/state/loci-metrics.json
-```
+**Other:**
+`agent_delegation`, `loci_mcp_tool`, `mcp_tool_call`
 
-### View Execution Graph
+### Local heuristics (CppAnalyzer)
 
-```bash
-# Print execution tree for current session
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --graph
+The bridge flags these patterns without a server roundtrip:
 
-# Show statistics
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --status
-
-# Identify hot files
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --hot-files
-
-# Compare two sessions
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state \
-  --diff session1_id session2_id
-```
-
-### View Action Log
-
-```bash
-# All captured actions
-tail -f loci-mcp/state/loci-actions.log
-
-# Filter by action type
-grep "cpp_compile" loci-mcp/state/loci-actions.log
-
-# View with pretty-printing
-cat loci-mcp/state/loci-actions.log | jq .
-```
-
-### Performance Monitoring
-
-```bash
-# Check hook execution overhead
-python3 loci-mcp/scripts/monitor-hooks.py
-
-# View bridge process stats
-ps aux | grep loci_bridge.py
-
-# Check for errors
-cat loci-mcp/state/bridge.log
-```
-
-## Troubleshooting
-
-### Problem: LOCI warnings not appearing
-
-**Solution:**
-1. Check if plugin is enabled: `cat loci-mcp/config/loci.json | jq .enabled`
-2. Verify hooks are registered: `ls -la loci-mcp/state/`
-3. Check bridge is running: `ps aux | grep loci_bridge`
-4. Review bridge log: `tail -20 loci-mcp/state/bridge.log`
-
-### Problem: MCP server connection failed
-
-**Solution:**
-1. Verify server URL: `cat loci-mcp/config/loci.json | jq .mcp_server_url`
-2. Test connectivity: `curl -I https://dev.mcp.loci-dev.net/mcp`
-3. Check credentials: `cat loci-mcp/config/loci.json | jq '.project_id, .org_id'`
-4. Run configuration wizard: `./loci-mcp/scripts/configure.sh`
-
-### Problem: No actions being captured
-
-**Solution:**
-1. Verify hook events are firing: `tail -f loci-mcp/state/loci-actions.log`
-2. Check if jq is installed: `which jq`
-3. Verify permissions: `ls -la loci-mcp/state/`
-4. Review hook system logs in Claude Code settings
-
-### Problem: High hook overhead
-
-**Solution:**
-1. Check performance metrics: `python3 loci-mcp/scripts/monitor-hooks.py`
-2. Reduce batch size: `jq '.batch_size = 5' loci-mcp/config/loci.json > .tmp && mv .tmp loci-mcp/config/loci.json`
-3. Increase poll interval: `jq '.poll_interval = 5' loci-mcp/config/loci.json > .tmp && mv .tmp loci-mcp/config/loci.json`
-4. Make problematic hooks async (edit `loci-mcp/hooks.json`)
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│              Claude Code                            │
-│  (receives LOCI warnings & insights)                │
-└────────────────┬────────────────────────────────────┘
-                 │ Hook Events
-                 ▼
-┌─────────────────────────────────────────────────────┐
-│         Hook System (hooks.json)                    │
-│  ├─ SessionStart/End: Lifecycle                    │
-│  ├─ PreToolUse: Warning injection                  │
-│  ├─ PostToolUse: Action capture                    │
-│  └─ Stop: Final analysis                           │
-└────────────────┬────────────────────────────────────┘
-                 │ JSON Actions
-                 ▼
-┌─────────────────────────────────────────────────────┐
-│    capture-action.sh (Action Classifier)           │
-│  ├─ Classify action type (15+ types)              │
-│  ├─ Extract C++ context                           │
-│  ├─ Queue for analysis                            │
-│  └─ Inject warnings                               │
-└────────────────┬────────────────────────────────────┘
-                 │ Queue Files
-                 ▼
-┌─────────────────────────────────────────────────────┐
-│    loci_bridge.py (C++ Analyzer)                   │
-│  ├─ CppAnalyzer: Local heuristics                 │
-│  ├─ TaskTracker: Execution graphs                 │
-│  ├─ Warning generation                            │
-│  └─ Metrics collection                            │
-└────────────────┬────────────────────────────────────┘
-                 │ HTTP/SSE
-                 ▼
-┌─────────────────────────────────────────────────────┐
-│    LOCI MCP Server (AuroraLabs)                     │
-│  ├─ Binary analysis                               │
-│  ├─ Performance profiling                         │
-│  ├─ Regression detection                          │
-│  └─ Power analysis                                │
-└─────────────────────────────────────────────────────┘
-```
-
-## File Structure
-
-```
-loci-plugin/
-├── README.md                          # This file
-├── loci-mcp/
-│   ├── manifest.json                 # Plugin metadata
-│   ├── hooks.json                    # Claude Code hook configuration
-│   ├── setup.sh                      # Installation script
-│   ├── config/
-│   │   └── loci.json                 # Runtime configuration
-│   ├── hooks/
-│   │   ├── capture-action.sh         # Main action capture hook
-│   │   ├── session-lifecycle.sh      # Session start/end hook
-│   │   └── stop-analysis.sh          # Shutdown hook
-│   ├── lib/
-│   │   ├── loci_bridge.py            # Core bridge & analyzer
-│   │   ├── task_tracker.py           # Execution graph builder
-│   │   ├── detect-project.sh         # Project context detection
-│   │   └── generate-summary.sh       # Session summary generator
-│   ├── scripts/
-│   │   ├── configure.sh              # Interactive configuration wizard
-│   │   └── monitor-hooks.py          # Performance monitoring
-│   ├── state/                        # Runtime state (auto-created)
-│   │   ├── loci-context.json        # Current session context
-│   │   ├── loci-warnings.json       # Active warnings
-│   │   ├── loci-metrics.json        # Performance metrics
-│   │   ├── loci-actions.log         # Action log
-│   │   └── bridge.log               # Bridge process log
-│   └── examples/
-│       ├── performance-optimization/ # Optimize hot function
-│       ├── memory-debugging/         # Find memory leaks
-│       └── build-configuration/      # Configure build system
-```
-
-## Advanced Usage
-
-### Custom Action Classification
-
-Edit `loci-mcp/hooks/capture-action.sh` to add custom action types for your project.
-
-### Custom Heuristics
-
-Extend `loci-mcp/lib/loci_bridge.py` CppAnalyzer class to add domain-specific analysis rules.
-
-### Integration with CI/CD
-
-Export LOCI data to your CI/CD pipeline:
-```bash
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --export > loci-report.json
-```
-
-## Support & Contribution
-
-- **Issues**: Report bugs or feature requests
-- **Documentation**: Contributing documentation improvements
-- **Code**: Submit PRs for enhancements
-- **Questions**: Check examples directory or troubleshooting guide
-
-## License
-
-MIT License - See LICENSE file for details
-
-## Links
-
-- [AuroraLabs LOCI](https://www.auroralabs.com/)
-- [Claude Code Documentation](https://claude.com/claude-code)
-- [MCP Specification](https://modelcontextprotocol.io/)
+| Pattern | Severity | Category |
+|---------|----------|----------|
+| `virtual` in hot-path function name (update/tick/render/process) | warning | performance |
+| Heap allocation (`new`, `malloc`, `push_back`) inside a loop | warning | memory |
+| `std::endl` (flushes buffer on every call) | info | performance |
+| `try`/`catch`/`throw` inside a loop | warning | performance |
+| `reinterpret_cast` or `const_cast` | warning | safety |
+| Stack array larger than 10,000 elements | warning | memory |
+| Source file larger than 8,000 characters | info | complexity |
+| No `-O` flag on compile command | warning | performance |
+| `-g -O0` together (debug build) | info | performance |
+| No `-march` flag (no CPU-specific instructions) | info | optimization |
 
 ---
 
-**Ready to optimize?** Start with: `./loci-mcp/scripts/configure.sh`
+## Usage examples
+
+### Time a function on Cortex-M4
+
+```
+User: "How long does process_sensor_data() take on Cortex-M4?"
+
+Claude:
+1. Compiles with: g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
+   (LOCI hook captures flags and output binary)
+2. Extracts assembly: objdump -d sensor | sed -n '/<process_sensor_data>/,/^$/p'
+3. Calls mcp__loci-mcp__get_assembly_block_timings_per_function:
+     function_name: "process_sensor_data"
+     assembly_code: "<extracted asm>"
+     architecture: "cortex-m4"
+4. LOCI returns: execution_time_ns=1240, std_dev_ns=85
+5. Reports: "~1.24 µs ± 85 ns on Cortex-M4"
+```
+
+### Compare -O2 vs -O3 on Cortex-A53
+
+```
+User: "Does -O3 help my DSP loop on Cortex-A53?"
+
+Claude:
+1. Compiles with -O2, extracts assembly for the loop function
+2. Calls get_assembly_block_timings → 920 ns baseline
+3. Recompiles with -O3 -march=cortex-a53, extracts new assembly
+4. Calls get_assembly_block_timings → 660 ns
+5. Reports: "-O3 + -march saves 260 ns (28%) on Cortex-A53"
+```
+
+### Batch timing across all changed functions
+
+```
+User: "Did the refactor slow anything down?"
+
+Claude:
+1. Identifies functions that changed (via git diff + objdump)
+2. Builds CSV of all changed functions with their new assembly
+3. Calls get_assembly_block_timings (batch) with architecture: "tc399"
+4. Compares against baseline timing from before the refactor
+5. Flags: "update_matrix() regressed by 340 ns on tc399"
+```
+
+---
+
+## Monitoring & debugging
+
+### Check plugin state
+
+```bash
+# Active warnings
+cat loci-mcp/state/loci-warnings.json | jq .
+
+# Session action timeline
+cat loci-mcp/state/loci-context.json | jq .
+
+# Bridge metrics
+cat loci-mcp/state/loci-metrics.json | jq .
+
+# All captured actions (live tail)
+tail -f loci-mcp/state/loci-actions.log
+
+# Hook errors
+cat loci-mcp/state/hook-errors.log
+
+# Bridge process log
+tail -20 loci-mcp/state/bridge.log
+```
+
+### Session analysis CLI
+
+```bash
+# Current session stats
+python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --status
+
+# Print execution graph tree
+python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --graph
+
+# Show most-touched files
+python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --hot-files
+
+# Diff two sessions
+python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --diff <session_a> <session_b>
+
+# Export session as JSON (for CI/CD)
+python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --export > loci-report.json
+```
+
+### Hook performance monitoring
+
+```bash
+# One-time report
+python3 loci-mcp/scripts/monitor-hooks.py
+
+# Continuous (every 5 s)
+python3 loci-mcp/scripts/monitor-hooks.py --watch --interval 5
+
+# JSON output (for CI/CD)
+python3 loci-mcp/scripts/monitor-hooks.py --json
+
+# Bridge process resource usage
+ps aux | grep loci_bridge.py
+```
+
+---
+
+## Troubleshooting
+
+### LOCI warnings not appearing
+
+1. Check plugin is enabled: `cat loci-mcp/config/loci.json | jq .enabled`
+2. Check bridge is running: `ps aux | grep loci_bridge`
+3. Check bridge log: `tail -20 loci-mcp/state/bridge.log`
+4. Check hook errors: `cat loci-mcp/state/hook-errors.log`
+
+### MCP server connection failed
+
+The server uses SSE — a plain `curl -I` will fail. Test correctly:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  -H "Accept: application/json, text/event-stream" \
+  https://dev.local.mcp.loci-dev.net/mcp
+# Expected: 200
+```
+
+Also verify:
+- `.mcp.json` exists at the project root with the correct URL
+- `cat loci-mcp/config/loci.json | jq '.project_id, .org_id'` shows your credentials
+
+### No actions being captured
+
+1. Verify hooks are firing: `tail -f loci-mcp/state/loci-actions.log`
+2. Check `jq` is installed: `which jq`
+3. Check state dir permissions: `ls -la loci-mcp/state/`
+4. Review Claude Code hook logs in Claude Code settings
+
+### High hook overhead
+
+```bash
+# Diagnose
+python3 loci-mcp/scripts/monitor-hooks.py
+
+# Reduce bridge load
+jq '.batch_size = 5 | .poll_interval = 5' \
+  loci-mcp/config/loci.json > .tmp && mv .tmp loci-mcp/config/loci.json
+```
+
+---
+
+## File structure
+
+```
+loci-plugin/
+├── README.md
+├── CHANGES.md
+└── loci-mcp/
+    ├── manifest.json              # Plugin metadata and capabilities
+    ├── hooks.json                 # Claude Code hook registration
+    ├── setup.sh                   # Installation script
+    ├── config/
+    │   └── loci.json              # Local bridge configuration
+    ├── hooks/
+    │   ├── capture-action.sh      # Action classifier + warning injector
+    │   ├── session-lifecycle.sh   # SessionStart / SessionEnd handler
+    │   └── stop-analysis.sh       # Stop hook — surfaces critical warnings
+    ├── lib/
+    │   ├── loci_bridge.py         # Local async C++ analyzer
+    │   ├── task_tracker.py        # Session graph + CLI
+    │   ├── detect-project.sh      # C++ project auto-detection
+    │   └── generate-summary.sh    # Session summary generator
+    ├── scripts/
+    │   ├── configure.sh           # Interactive configuration wizard
+    │   └── monitor-hooks.py       # Hook performance monitor
+    ├── state/                     # Runtime state (auto-created)
+    │   ├── loci-warnings.json     # Active heuristic warnings
+    │   ├── loci-context.json      # Session action timeline
+    │   ├── loci-metrics.json      # Bridge metrics
+    │   ├── loci-actions.log       # All captured actions
+    │   ├── bridge.log             # Bridge process log
+    │   ├── hook-errors.log        # Hook script errors
+    │   ├── queue/                 # Actions waiting for bridge
+    │   ├── analysis-queue/        # High-priority actions (compile/binary)
+    │   └── sessions/              # Per-session manifests
+    └── examples/
+        ├── performance-optimization/
+        ├── memory-debugging/
+        └── build-configuration/
+```
+
+---
+
+## Advanced
+
+### Add custom action types
+
+Edit `loci-mcp/hooks/capture-action.sh` — add branches to the `classify_action()` function for any tool patterns specific to your project.
+
+### Add custom heuristics
+
+Extend the `CppAnalyzer` class in `loci-mcp/lib/loci_bridge.py` — add entries to `PERF_PATTERNS` or `COMPILE_WARNINGS` for domain-specific rules.
+
+---
+
+## Links
+
+- [AuroraLabs](https://www.auroralabs.com/)
+- [Claude Code documentation](https://claude.ai/code)
+- [MCP specification](https://modelcontextprotocol.io/)
+
+---
+
+**Get started:** `./loci-mcp/setup.sh`
