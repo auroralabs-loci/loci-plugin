@@ -6,32 +6,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Install and initialize
-./loci-mcp/setup.sh
+./loci-plugin/setup.sh
 
 # Interactive configuration wizard
-./loci-mcp/scripts/configure.sh
+./loci-plugin/scripts/configure.sh
 
 # Session analysis CLI
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --status
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --graph
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --hot-files
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --diff <session_a> <session_b>
-python3 loci-mcp/lib/task_tracker.py --state-dir loci-mcp/state --export > report.json
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --status
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --graph
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --hot-files
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --diff <session_a> <session_b>
+python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --export > report.json
 
 # Hook performance monitor
-python3 loci-mcp/scripts/monitor-hooks.py
-python3 loci-mcp/scripts/monitor-hooks.py --watch --interval 5
-python3 loci-mcp/scripts/monitor-hooks.py --json
+python3 loci-plugin/scripts/monitor-hooks.py
+python3 loci-plugin/scripts/monitor-hooks.py --watch --interval 5
+python3 loci-plugin/scripts/monitor-hooks.py --json
 
 # Debug state
-cat loci-mcp/state/loci-warnings.json | jq .
-cat loci-mcp/state/loci-context.json | jq .
-tail -f loci-mcp/state/loci-actions.log
-tail -20 loci-mcp/state/bridge.log
-cat loci-mcp/state/hook-errors.log
+cat loci-plugin/state/loci-warnings.json | jq .
+cat loci-plugin/state/loci-context.json | jq .
+tail -f loci-plugin/state/loci-actions.log
+tail -20 loci-plugin/state/bridge.log
+cat loci-plugin/state/hook-errors.log
 
 # Validate hook registration
-jq empty loci-mcp/hooks.json && echo "Valid"
+jq empty loci-plugin/hooks.json && echo "Valid"
 ps aux | grep loci_bridge.py
 ```
 
@@ -47,7 +47,7 @@ Claude Code fires shell hooks at `SessionStart`, `PreToolUse`, `PostToolUse`, an
 `loci_bridge.py` runs as a persistent background daemon (started by `session-lifecycle.sh` at `SessionStart`, PID stored in `state/bridge.pid`). It wakes on `SIGUSR1` or every `poll_interval` seconds, reads up to `batch_size` queue files, updates the session timeline in `state/loci-context.json`, runs `CppAnalyzer` heuristics against file contents and compiler flags, and writes results to `state/loci-warnings.json` and `state/loci-metrics.json`. The bridge makes **no outbound HTTP calls** — it is purely local.
 
 **Remote side (Claude Code → LOCI MCP server directly)**
-Claude Code connects to the LOCI MCP server via SSE (configured in `.mcp.json` at the project root). Claude calls `mcp__loci-mcp__get_assembly_block_timings` (batch) or `mcp__loci-mcp__get_assembly_block_timings_per_function` (single) directly — the bridge is not involved. The bridge does capture these MCP calls as `loci_mcp_tool` actions for the session timeline.
+Claude Code connects to the LOCI MCP server via SSE (configured in `.mcp.json` at the project root). Claude calls `mcp__loci-plugin__get_assembly_block_timings` (batch) or `mcp__loci-plugin__get_assembly_block_timings_per_function` (single) directly — the bridge is not involved. The bridge does capture these MCP calls as `loci_mcp_tool` actions for the session timeline.
 
 ### Data flow for a typical C++ optimization task
 
@@ -59,7 +59,7 @@ Claude compiles a binary
   → bridge wakes, updates file timeline, checks for missing -O / -march / debug flags
   → Claude runs objdump on the binary
   → PostToolUse: classify as binary_analysis, queue JSON
-  → Claude calls mcp__loci-mcp__get_assembly_block_timings_per_function
+  → Claude calls mcp__loci-plugin__get_assembly_block_timings_per_function
   → LOCI server returns execution_time_ns + std_dev_ns
   → Claude reports timing and optimizes
 ```
@@ -100,23 +100,23 @@ Critical warnings cause the `Stop` hook to return `"continue": false`, blocking 
 
 ### Extending the system
 
-**Add a custom action type**: Edit `classify_action()` in `loci-mcp/hooks/capture-action.sh`. Add an `elif` branch matching your command pattern and return a new action type string.
+**Add a custom action type**: Edit `classify_action()` in `loci-plugin/hooks/capture-action.sh`. Add an `elif` branch matching your command pattern and return a new action type string.
 
-**Add a custom heuristic**: Add entries to `CppAnalyzer.PERF_PATTERNS` (regex on source) or `COMPILE_WARNINGS` (flags check) in `loci-mcp/lib/loci_bridge.py`. Each entry needs: `pattern`/`check`, `severity`, `category`, `message`.
+**Add a custom heuristic**: Add entries to `CppAnalyzer.PERF_PATTERNS` (regex on source) or `COMPILE_WARNINGS` (flags check) in `loci-plugin/lib/loci_bridge.py`. Each entry needs: `pattern`/`check`, `severity`, `category`, `message`.
 
 ### Configuration
 
 Two separate configs must stay consistent:
 - **`.mcp.json`** (project root) — Claude Code's MCP connection URL; created by `setup.sh`
-- **`loci-mcp/config/loci.json`** — Bridge settings; `mcp_server_name` must match the server name in `.mcp.json`
+- **`loci-plugin/config/loci.json`** — Bridge settings; `mcp_server_name` must match the server name in `.mcp.json`
 
-Set `project_id` and `org_id` in `loci-mcp/config/loci.json` to enable AuroraLabs tracking (optional but required for the remote LOCI server to associate sessions with your account).
+Set `project_id` and `org_id` in `loci-plugin/config/loci.json` to enable AuroraLabs tracking (optional but required for the remote LOCI server to associate sessions with your account).
 
 ### MCP server tools
 
 Supported architectures for timing predictions: `cortex-a53`, `cortex-m4`, `tc399`.
 
-- `mcp__loci-mcp__get_assembly_block_timings` — Batch: input CSV `(function_name, assembly_code)`, returns CSV `(function_name, execution_time_ns, std_dev_ns)`
-- `mcp__loci-mcp__get_assembly_block_timings_per_function` — Single function: returns `execution_time_ns` + `std_dev_ns`
+- `mcp__loci-plugin__get_assembly_block_timings` — Batch: input CSV `(function_name, assembly_code)`, returns CSV `(function_name, execution_time_ns, std_dev_ns)`
+- `mcp__loci-plugin__get_assembly_block_timings_per_function` — Single function: returns `execution_time_ns` + `std_dev_ns`
 
 The typical workflow when asked to time a function: compile with the target architecture flag (e.g., `-march=cortex-m4`), extract its assembly with `objdump -d`, call the appropriate LOCI MCP tool.
