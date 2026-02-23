@@ -266,7 +266,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ]; then
           if jq -n --arg msg "LOCI Warning: $WARNING" '{
             hookSpecificOutput: {
               hookEventName: "PreToolUse",
-              additionalContext: $msg
+              "additionalContext": $msg + " C++ file changed. Call mcp__loci-mcp__get_assembly_block_timings_per_function to analyze timing for the modified function."
             }
           }' 2>/dev/null; then
             exit 0
@@ -291,6 +291,20 @@ if [ "$HOOK_EVENT" = "PostToolUse" ]; then
       fi
       ;;
   esac
+
+  # Write pending regression check when a compile produced an architecture-targeted binary
+  if [ "$ACTION_TYPE" = "cpp_compile" ] || [ "$ACTION_TYPE" = "cpp_build" ]; then
+    ARCH_FLAG=$(echo "$COMPILER_FLAGS" | jq -r '.[] | select(startswith("-march=") or startswith("-mcpu="))' 2>/dev/null | head -1 || true)
+    if [ -n "$OUTPUT_BINARY" ] && [ -n "$ARCH_FLAG" ]; then
+      ARCH_VALUE=$(echo "$ARCH_FLAG" | sed 's/-m[a-z]*=//')
+      jq -n \
+        --arg binary "$OUTPUT_BINARY" \
+        --arg arch "$ARCH_VALUE" \
+        --arg ts "$TIMESTAMP" \
+        '{binary_path: $binary, architecture: $arch, timestamp: $ts}' \
+        > "${STATE_DIR}/pending-regression-check.json" 2>/dev/null || true
+    fi
+  fi
 fi
 
 # Graceful exit - even if there were errors, don't fail the hook

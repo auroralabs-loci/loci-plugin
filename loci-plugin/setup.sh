@@ -52,6 +52,7 @@ echo -n "Creating state directories... "
 mkdir -p "${PLUGIN_DIR}/state/queue"
 mkdir -p "${PLUGIN_DIR}/state/sessions"
 mkdir -p "${PLUGIN_DIR}/state/analysis-queue"
+[ -f "${PLUGIN_DIR}/state/loci-baselines.json" ] || echo '{}' > "${PLUGIN_DIR}/state/loci-baselines.json"
 echo -e "${GREEN}OK${NC}"
 
 # 5. Detect project

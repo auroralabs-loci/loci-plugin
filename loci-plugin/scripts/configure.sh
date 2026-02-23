@@ -121,6 +121,7 @@ echo ""
 POLL_INTERVAL="2.0"
 BATCH_SIZE="10"
 ANALYSIS_TIMEOUT="30.0"
+REGRESSION_THRESHOLD="0.10"
 
 read -p "Poll interval in seconds [$POLL_INTERVAL]: " -r input
 POLL_INTERVAL="${input:-$POLL_INTERVAL}"
@@ -130,6 +131,9 @@ BATCH_SIZE="${input:-$BATCH_SIZE}"
 
 read -p "Analysis timeout in seconds [$ANALYSIS_TIMEOUT]: " -r input
 ANALYSIS_TIMEOUT="${input:-$ANALYSIS_TIMEOUT}"
+
+read -p "Regression threshold (0.10 = block if >10% slower) [$REGRESSION_THRESHOLD]: " -r input
+REGRESSION_THRESHOLD="${input:-$REGRESSION_THRESHOLD}"
 
 echo ""
 
@@ -169,12 +173,14 @@ CONFIG_JSON=$(jq -n \
   --arg poll "$POLL_INTERVAL" \
   --argjson batch "$BATCH_SIZE" \
   --arg timeout "$ANALYSIS_TIMEOUT" \
+  --arg threshold "$REGRESSION_THRESHOLD" \
   '{
     "mcp_server_url": $url,
     "mcp_server_name": "loci-mcp",
     "poll_interval": ($poll | tonumber),
     "batch_size": ($batch | tonumber),
     "analysis_timeout": ($timeout | tonumber),
+    "regression_threshold": ($threshold | tonumber),
     "enabled": true,
     "_comment": "The LOCI MCP server is configured in .mcp.json at project root. Claude Code connects to it directly. This config is for the local hook bridge."
   }')
@@ -188,6 +194,7 @@ echo "  MCP Server: $MCP_URL"
 echo "  Poll Interval: ${POLL_INTERVAL}s"
 echo "  Batch Size: $BATCH_SIZE"
 echo "  Timeout: ${ANALYSIS_TIMEOUT}s"
+echo "  Regression Threshold: $(echo "$REGRESSION_THRESHOLD * 100" | bc)%"
 
 echo ""
 
@@ -204,6 +211,7 @@ mkdir -p "$STATE_DIR"
 # Initialize state files
 jq -n '{"warnings": []}' > "${STATE_DIR}/loci-warnings.json"
 jq -n '{}' > "${STATE_DIR}/loci-context.json"
+[ -f "${STATE_DIR}/loci-baselines.json" ] || jq -n '{}' > "${STATE_DIR}/loci-baselines.json"
 jq -n '{
   "actions_processed": 0,
   "insights_generated": 0,
