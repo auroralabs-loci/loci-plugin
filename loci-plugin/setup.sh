@@ -55,6 +55,30 @@ mkdir -p "${PLUGIN_DIR}/state/analysis-queue"
 [ -f "${PLUGIN_DIR}/state/loci-baselines.json" ] || echo '{}' > "${PLUGIN_DIR}/state/loci-baselines.json"
 echo -e "${GREEN}OK${NC}"
 
+# 4b. Set up slicer environment
+VENV_DIR="${PLUGIN_DIR}/.venv"
+WHEEL_DIR="${PLUGIN_DIR}/slicer-wheels"
+SLICER_AVAILABLE=false
+
+echo -n "Setting up slicer environment... "
+if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
+  if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR" 2>/dev/null
+  fi
+  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip 2>/dev/null
+  "${VENV_DIR}/bin/pip" install --quiet "mcp>=1.0.0" 2>/dev/null
+  "${VENV_DIR}/bin/pip" install --quiet --force-reinstall "${WHEEL_DIR}"/*.whl 2>/dev/null
+  # Verify import works
+  if "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
+    SLICER_AVAILABLE=true
+    echo -e "${GREEN}OK${NC}"
+  else
+    echo -e "${YELLOW}wheel installed but import failed${NC}"
+  fi
+else
+  echo -e "${YELLOW}no wheels found in slicer-wheels/ — slicer disabled${NC}"
+fi
+
 # 5. Detect project
 echo -n "Detecting C++ project... "
 PROJECT_INFO=$("${PLUGIN_DIR}/lib/detect-project.sh" "$(pwd)" 2>/dev/null || echo '{}')
@@ -104,6 +128,20 @@ else
   echo -e "  ${GREEN}Created${NC}"
 fi
 
+# 7b. Add loci-slicer to .mcp.json if slicer is available
+if [ "$SLICER_AVAILABLE" = true ]; then
+  echo -n "Adding loci-slicer to .mcp.json... "
+  if jq --arg py "${VENV_DIR}/bin/python" --arg srv "${PLUGIN_DIR}/lib/slicer_mcp_server.py" \
+    '.mcpServers["loci-slicer"] = {"command": $py, "args": [$srv], "env": {"PYTHONUNBUFFERED": "1"}}' \
+    "${PROJECT_ROOT}/.mcp.json" > "${PROJECT_ROOT}/.mcp.json.tmp" 2>/dev/null && \
+    mv "${PROJECT_ROOT}/.mcp.json.tmp" "${PROJECT_ROOT}/.mcp.json"; then
+    echo -e "${GREEN}OK${NC}"
+  else
+    echo -e "${YELLOW}FAILED — add loci-slicer manually${NC}"
+    rm -f "${PROJECT_ROOT}/.mcp.json.tmp"
+  fi
+fi
+
 echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo ""
@@ -113,6 +151,9 @@ echo "  - Track binary artifacts and source-to-binary relationships"
 echo "  - Monitor assembly file changes and binary diffs"
 echo "  - Stream context to LOCI MCP for execution-aware analysis"
 echo "  - Inject performance/regression warnings into Claude's context"
+if [ "$SLICER_AVAILABLE" = true ]; then
+echo "  - Analyze ELF binaries locally via loci-slicer (symbols, assembly, blocks, diff)"
+fi
 echo ""
 echo "Restart Claude Code to activate."
 echo ""

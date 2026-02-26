@@ -166,7 +166,9 @@ classify_action() {
       echo "agent_delegation"
       ;;
     *)
-      if echo "$tool" | grep -q "^mcp__loci-mcp__"; then
+      if echo "$tool" | grep -q "^mcp__loci-slicer__"; then
+        echo "loci_slicer_tool"
+      elif echo "$tool" | grep -q "^mcp__loci-mcp__"; then
         echo "loci_mcp_tool"
       elif echo "$tool" | grep -q "^mcp__"; then
         echo "mcp_tool_call"
@@ -280,7 +282,7 @@ fi
 # For PostToolUse: queue binary-producing actions for LOCI deep analysis
 if [ "$HOOK_EVENT" = "PostToolUse" ]; then
   case "$ACTION_TYPE" in
-    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff)
+    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff|loci_slicer_tool)
       ANALYSIS_QUEUE="${STATE_DIR}/analysis-queue"
       if mkdir -p "$ANALYSIS_QUEUE" 2>/dev/null; then
         if ! echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json" 2>/dev/null; then

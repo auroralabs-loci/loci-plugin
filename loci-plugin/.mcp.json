@@ -3,6 +3,13 @@
     "loci-mcp": {
       "type": "sse",
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
+    },
+    "loci-slicer": {
+      "command": ".venv/bin/python",
+      "args": ["lib/slicer_mcp_server.py"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
     }
   }
 }
