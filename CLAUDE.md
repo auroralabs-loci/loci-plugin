@@ -60,8 +60,8 @@ Claude compiles a binary
   → Claude runs objdump on the binary
   → PostToolUse: classify as binary_analysis, queue JSON
   → Claude calls mcp__loci-plugin__get_assembly_block_timings_per_function
-  → LOCI server returns execution_time_ns + std_dev_ns
-  → Claude reports timing and optimizes
+  → LOCI server returns execution_time_ns + std_dev_ns + energy_ws
+  → Claude reports timing, energy consumption, and optimizes
 ```
 
 ### State files
@@ -112,9 +112,9 @@ Two separate configs must stay consistent:
 
 ### MCP server tools
 
-Supported architectures for timing predictions: `cortex-a53`, `cortex-m4`, `tc399`.
+Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.
 
-- `mcp__loci-plugin__get_assembly_block_timings` — Batch: input CSV `(function_name, assembly_code)`, returns CSV `(function_name, execution_time_ns, std_dev_ns)`
-- `mcp__loci-plugin__get_assembly_block_timings_per_function` — Single function: returns `execution_time_ns` + `std_dev_ns`
+- `mcp__loci-plugin__get_assembly_block_exec_behavior` — Batch: input CSV `(function_name, assembly_code)`, returns CSV `(function_name, execution_time_ns, std_dev_ns, energy_ws)`. Use to compare performance between function versions, identify high-cost functions, or get hardware-aware estimates without running on real hardware. `energy_ws` is estimated energy in Watt-seconds (Joules), derived from execution_time_ns and an architecture-dependent energy constant (nanojoules per nanosecond).
+- `mcp__loci-plugin__get_assembly_block_exec_behavior_per_function` — Single function: returns `execution_time_ns` + `std_dev_ns` + `energy_ws`
 
 The typical workflow when asked to time a function: compile with the target architecture flag (e.g., `-march=cortex-m4`), extract its assembly with `objdump -d`, call the appropriate LOCI MCP tool.
