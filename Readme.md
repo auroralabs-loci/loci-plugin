@@ -14,7 +14,7 @@ The plugin has two sides:
 
 ## MCP Tools
 
-The LOCI server (v1.25.0) exposes two tools. Claude calls them as `mcp__loci-mcp__<name>`.
+The LOCI server (v1.25.0) exposes two tools. Claude calls them as `mcp__loci-plugin__<name>`.
 
 ### `get_assembly_block_exec_behavior`
 
@@ -93,7 +93,7 @@ Created automatically by `setup.sh`. Tells Claude Code where to find the LOCI se
 ```json
 {
   "mcpServers": {
-    "loci-mcp": {
+    "loci-plugin": {
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }
   }
@@ -107,7 +107,7 @@ Controls the local `loci_bridge.py` process:
 ```json
 {
   "mcp_server_url": "https://dev.local.mcp.loci-dev.net/mcp",
-  "mcp_server_name": "loci-mcp",
+  "mcp_server_name": "loci-plugin",
   "poll_interval": 2.0,
   "batch_size": 10,
   "analysis_timeout": 30.0,
@@ -141,7 +141,7 @@ An interactive setup wizard is also available:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                        Claude Code                           │
-│  (calls mcp__loci-mcp__ tools; receives hook warnings)       │
+│  (calls mcp__loci-plugin__ tools; receives hook warnings)       │
 └──────┬───────────────────────────────────────┬───────────────┘
        │ Hook Events                           │ MCP / SSE
        ▼                                       ▼
@@ -231,7 +231,7 @@ Claude:
 1. Compiles with: g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
    (LOCI hook captures flags and output binary)
 2. Extracts assembly: objdump -d sensor | sed -n '/<process_sensor_data>/,/^$/p'
-3. Calls mcp__loci-mcp__get_assembly_block_exec_behavior:
+3. Calls mcp__loci-plugin__get_assembly_block_exec_behavior:
      csv_text: "function_name,assembly_code\nprocess_sensor_data,\"<extracted asm>\""
      architecture: "cortex-m4"
 4. LOCI returns: execution_time_ns=1240, std_dev_ns=85, energy_ws=0.00012
@@ -398,7 +398,7 @@ loci-plugin/
     │   └── monitor-hooks.py       # Hook performance monitor
     ├── skills/
     │   └── analyze/
-    │       └── SKILL.md           # /loci-mcp:analyze skill
+    │       └── SKILL.md           # /loci-plugin:analyze skill
     └── state/                     # Runtime state (auto-created)
         ├── loci-warnings.json     # Active heuristic warnings
         ├── loci-context.json      # Session action timeline

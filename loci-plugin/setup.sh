@@ -144,18 +144,18 @@ fi
 echo -n "Checking LOCI MCP server config... "
 PROJECT_ROOT="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
 if [ -f "${PROJECT_ROOT}/.mcp.json" ]; then
-  MCP_URL=$(jq -r '.mcpServers["loci-mcp"].url // empty' "${PROJECT_ROOT}/.mcp.json" 2>/dev/null)
+  MCP_URL=$(jq -r '.mcpServers["loci-plugin"].url // empty' "${PROJECT_ROOT}/.mcp.json" 2>/dev/null)
   if [ -n "$MCP_URL" ]; then
     echo -e "${GREEN}${MCP_URL}${NC}"
   else
-    echo -e "${YELLOW}loci-mcp not found in .mcp.json${NC}"
+    echo -e "${YELLOW}loci-plugin not found in .mcp.json${NC}"
   fi
 else
   echo -e "${YELLOW}.mcp.json not found${NC}"
   echo "  Creating .mcp.json with LOCI MCP server..."
   echo '{
   "mcpServers": {
-    "loci-mcp": {
+    "loci-plugin": {
       "type": "http",
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }

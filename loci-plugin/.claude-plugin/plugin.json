@@ -1,11 +1,31 @@
 {
-  "name": "loci-mcp",
+  "name": "loci-plugin",
   "version": "1.2.0",
-  "description": "LOCI Execution-Aware Plugin for C++ — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis. Includes local ELF binary slicer for symbols, assembly, blocks, callgraph, and diff.",
+  "description": "LOCI Execution-Aware Plugin for compiled binaries (C, C++, Rust, GoLang) — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis. Includes local ELF binary slicer for symbols, assembly, blocks, callgraph, and diff.",
   "author": {
     "name": "AuroraLabs",
     "url": "https://www.auroralabs.com/"
   },
   "homepage": "https://www.auroralabs.com/",
-  "keywords": ["cpp", "embedded", "performance", "timing", "cortex-m4", "assembly", "loci", "elf", "slicer", "symbols", "callgraph", "binary-diff"]
+  "keywords": [
+    "cpp",
+    "c",
+    "rust",
+    "golang",
+    "embedded",
+    "performance",
+    "power-profiling",
+    "timing",
+    "armv8",
+    "armv9",
+    "Tricore",
+    "cortex-m4",
+    "assembly",
+    "loci",
+    "elf",
+    "slicer",
+    "symbols",
+    "callgraph",
+    "binary-diff"
+  ]
 }

@@ -59,7 +59,7 @@
         ]
       },
       {
-        "matcher": "mcp__loci-mcp__.*",
+        "matcher": "mcp__loci-plugin__.*",
         "hooks": [
           {
             "type": "command",
@@ -94,7 +94,7 @@
         ]
       },
       {
-        "matcher": "mcp__loci-mcp__.*",
+        "matcher": "mcp__loci-plugin__.*",
         "hooks": [
           {
             "type": "command",
@@ -133,7 +133,7 @@
             "type": "agent",
             "timeout": 120,
             "statusMessage": "LOCI: Checking for timing regressions...",
-            "prompt": "You are a LOCI timing regression checker. Detect performance regressions after C++ compilation.\n\nInput: $ARGUMENTS\n\n1. Parse the JSON. If stop_hook_active is true, respond {\"ok\": true} immediately.\n2. Check if $CLAUDE_PLUGIN_ROOT/state/pending-regression-check.json exists. If not, respond {\"ok\": true}.\n3. Read and immediately delete the file. Extract binary_path and architecture.\n4. Confirm the binary exists at binary_path. If not, respond {\"ok\": true}.\n5. Run: objdump -d <binary_path> 2>/dev/null\n   Collect up to 15 real C++ function names (skip .plt/.got stubs and section headers) with their full assembly blocks.\n6. Build CSV: first line 'function_name,assembly_code', then one row per function with the assembly as a quoted string.\n7. Read $CLAUDE_PLUGIN_ROOT/config/loci.json — get regression_threshold (default 0.10).\n8. Read $CLAUDE_PLUGIN_ROOT/state/loci-baselines.json — use {} if missing.\n9. Call mcp__loci-mcp__get_assembly_block_exec_behavior with the CSV and the architecture from step 3.\n10. For each timing result, key = \"<binary_path>::<function_name>::<architecture>\".\n    - Key absent in baselines: record as new baseline {execution_time_ns, std_dev_ns, architecture, timestamp}. No regression.\n    - Key present: pct = (new_ns - baseline_ns) / baseline_ns\n      - pct > regression_threshold: add to regressions list\n      - pct < -0.05: improvement, update baseline\n11. Write updated baselines to $CLAUDE_PLUGIN_ROOT/state/loci-baselines.json.\n12. Regressions found: respond {\"ok\": false, \"reason\": \"LOCI regressions on <architecture>: <function> +X% (<old>ns → <new>ns). Review or optimize before continuing.\"}\n    No regressions: respond {\"ok\": true}"
+            "prompt": "You are a LOCI timing regression checker. Detect performance regressions after C++ compilation.\n\nInput: $ARGUMENTS\n\n1. Parse the JSON. If stop_hook_active is true, respond {\"ok\": true} immediately.\n2. Check if $CLAUDE_PLUGIN_ROOT/state/pending-regression-check.json exists. If not, respond {\"ok\": true}.\n3. Read and immediately delete the file. Extract binary_path and architecture.\n4. Confirm the binary exists at binary_path. If not, respond {\"ok\": true}.\n5. Run: objdump -d <binary_path> 2>/dev/null\n   Collect up to 15 real C++ function names (skip .plt/.got stubs and section headers) with their full assembly blocks.\n6. Build CSV: first line 'function_name,assembly_code', then one row per function with the assembly as a quoted string.\n7. Read $CLAUDE_PLUGIN_ROOT/config/loci.json — get regression_threshold (default 0.10).\n8. Read $CLAUDE_PLUGIN_ROOT/state/loci-baselines.json — use {} if missing.\n9. Call mcp__loci-plugin__get_assembly_block_exec_behavior with the CSV and the architecture from step 3.\n10. For each timing result, key = \"<binary_path>::<function_name>::<architecture>\".\n    - Key absent in baselines: record as new baseline {execution_time_ns, std_dev_ns, architecture, timestamp}. No regression.\n    - Key present: pct = (new_ns - baseline_ns) / baseline_ns\n      - pct > regression_threshold: add to regressions list\n      - pct < -0.05: improvement, update baseline\n11. Write updated baselines to $CLAUDE_PLUGIN_ROOT/state/loci-baselines.json.\n12. Regressions found: respond {\"ok\": false, \"reason\": \"LOCI regressions on <architecture>: <function> +X% (<old>ns → <new>ns). Review or optimize before continuing.\"}\n    No regressions: respond {\"ok\": true}"
           }
         ]
       }

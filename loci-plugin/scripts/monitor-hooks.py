@@ -402,7 +402,7 @@ def main():
 
     if not state_dir.exists():
         print(f"Error: State directory not found: {state_dir}")
-        print("Run: ./loci-mcp/scripts/configure.sh")
+        print("Run: ./loci-plugin/scripts/configure.sh")
         sys.exit(1)
 
     monitor = HookMonitor(state_dir)

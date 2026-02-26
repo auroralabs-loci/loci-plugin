@@ -176,7 +176,7 @@ CONFIG_JSON=$(jq -n \
   --arg threshold "$REGRESSION_THRESHOLD" \
   '{
     "mcp_server_url": $url,
-    "mcp_server_name": "loci-mcp",
+    "mcp_server_name": "loci-plugin",
     "poll_interval": ($poll | tonumber),
     "batch_size": ($batch | tonumber),
     "analysis_timeout": ($timeout | tonumber),

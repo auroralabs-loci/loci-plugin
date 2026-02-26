@@ -169,7 +169,7 @@ classify_action() {
     *)
       if echo "$tool" | grep -q "^mcp__loci-slicer__"; then
         echo "loci_slicer_tool"
-      elif echo "$tool" | grep -q "^mcp__loci-mcp__"; then
+      elif echo "$tool" | grep -q "^mcp__loci-plugin__"; then
         echo "loci_mcp_tool"
       elif echo "$tool" | grep -q "^mcp__"; then
         echo "mcp_tool_call"
@@ -278,7 +278,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ]; then
           if jq -n --arg msg "LOCI Warning: $WARNING" '{
             hookSpecificOutput: {
               hookEventName: "PreToolUse",
-              "additionalContext": $msg + " C++ file changed. Call mcp__loci-mcp__get_assembly_block_exec_behavior to analyze execution behavior for the modified function."
+              "additionalContext": $msg + " C++ file changed. Call mcp__loci-plugin__get_assembly_block_exec_behavior to analyze execution behavior for the modified function."
             }
           }' 2>/dev/null; then
             exit 0

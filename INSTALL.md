@@ -6,7 +6,7 @@ Add the LOCI plugin to a C++ project for execution-aware timing analysis and ELF
 
 Two MCP servers working together:
 
-- **loci-mcp** (remote, SSE) — predicts execution time for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399)
+- **loci-plugin** (remote, SSE) — predicts execution time for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399)
 - **loci-slicer** (local, stdio) — parses ELF binaries to extract symbols, disassembly, basic blocks, callgraphs, and binary diffs
 
 The slicer feeds assembly to the timing backend in exactly the right format. No more manual `objdump` + copy-paste.
@@ -56,7 +56,7 @@ Copy the wheel into the `slicer-wheels/` directory:
 cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/slicer-wheels/
 ```
 
-If you don't have the wheel, the plugin still works — you just won't have the slicer tools. The remote timing backend (loci-mcp) works independently.
+If you don't have the wheel, the plugin still works — you just won't have the slicer tools. The remote timing backend (loci-plugin) works independently.
 
 ## 3. Run setup
 
@@ -123,7 +123,7 @@ Check `.mcp.json`:
 cat .mcp.json | jq .
 ```
 
-You should see at least the `loci-mcp` SSE server. If the slicer wheel was installed, you'll also see `loci-slicer` with absolute paths to the venv Python and server script.
+You should see at least the `loci-plugin` SSE server. If the slicer wheel was installed, you'll also see `loci-slicer` with absolute paths to the venv Python and server script.
 
 ## 5. Launch Claude Code
 
@@ -132,7 +132,7 @@ claude
 ```
 
 Verify everything is connected:
-- `/mcp` — should list `loci-mcp` (and `loci-slicer` if the wheel was installed)
+- `/mcp` — should list `loci-plugin` (and `loci-slicer` if the wheel was installed)
 - Type `/` and look for `analyze` and `slice` in the command list
 
 ---
@@ -173,7 +173,7 @@ The fastest path from source to timing prediction. Just tell Claude what functio
 Claude will:
 1. Compile `main.cpp` for the target architecture
 2. Call `mcp__loci-slicer__extract_assembly` on the binary to get `calculate`'s assembly
-3. Pass the assembly to `mcp__loci-mcp__get_assembly_block_exec_behavior`
+3. Pass the assembly to `mcp__loci-plugin__get_assembly_block_exec_behavior`
 4. Report the predicted execution time in microseconds with standard deviation
 
 You can also ask for it conversationally:
@@ -316,4 +316,4 @@ sudo apt install python3-venv  # Ubuntu/Debian
 
 **"ELF file not found"** — The slicer needs an absolute path or a path relative to Claude Code's working directory. Use the full path when in doubt.
 
-**Timing backend unreachable** — The `loci-mcp` server is remote (SSE). Check network access to the URL in `.mcp.json`. The slicer works entirely offline.
+**Timing backend unreachable** — The `loci-plugin` server is remote (SSE). Check network access to the URL in `.mcp.json`. The slicer works entirely offline.

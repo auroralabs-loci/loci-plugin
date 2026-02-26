@@ -234,7 +234,7 @@ async def list_tools() -> list[Tool]:
                 "Extract per-function assembly from an ELF binary in the exact format "
                 "the LOCI timing backend expects. Returns assembly, metadata, and a "
                 "pre-formatted timing_csv for direct pass-through to "
-                "mcp__loci-mcp__get_assembly_block_exec_behavior."
+                "mcp__loci-plugin__get_assembly_block_exec_behavior."
             ),
             inputSchema={
                 "type": "object",
