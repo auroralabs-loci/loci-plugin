@@ -4,15 +4,13 @@
 
 ### MCP Server Changes (server v1.25.0)
 
-The LOCI MCP server now exposes assembly timing prediction tools, replacing the previous session/analysis API:
+The LOCI MCP server makes Claude software-execution aware by using the generated binary and enables benchmarking of execution behavior across code changes.
 
 **New tools:**
-- **`get_assembly_block_timings`** — Predict execution time for multiple functions at once. Accepts a CSV of `(function_name, assembly_code)` pairs and returns predicted `execution_time_ns` and `std_dev_ns` per function.
-- **`get_assembly_block_timings_per_function`** — Predict execution time for a single function by name, assembly code, and target architecture.
+- **`get_assembly_block_exec_behavior`** — Provides execution behavior (time and energy consumption) for one or more assembly blocks. Accepts a CSV of `(function_name, assembly_code)` and a target architecture, returns predicted `execution_time_ns`, `std_dev_ns`, and `energy_ws` (estimated energy in Watt-seconds/Joules derived from an architecture-dependent energy constant). Useful for comparing performance between code versions, identifying high-cost functions, and getting hardware-aware estimations without running on real hardware. Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.
+- **`get_assembly_block_exec_behavior_per_function`** — Predict execution time for a single function by name, assembly code, and target architecture.
 
-**Supported architectures:** `cortex-a53`, `cortex-m4`, `tc399`
 
-**Removed tools:** `get_session_context`, `analyze_performance`, `compare_sessions`
 
 ### Bug Fixes
 

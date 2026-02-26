@@ -1,6 +1,6 @@
 ---
 name: analyze
-description: Analyze C++ function timing on embedded targets
+description: Analyze function  based on compiled assembly code to provide execution insights
 disable-model-invocation: true
 ---
 

@@ -13,7 +13,7 @@ NC='\033[0m'
 echo ""
 echo -e "${BLUE}=========================================${NC}"
 echo -e "${BLUE}  LOCI MCP Plugin for Claude Code${NC}"
-echo -e "${BLUE}  C++ Execution-Aware Analysis${NC}"
+echo -e "${BLUE}  SW Execution-Aware Analysis${NC}"
 echo -e "${BLUE}=========================================${NC}"
 echo ""
 
@@ -80,7 +80,7 @@ else
 fi
 
 # 5. Detect project
-echo -n "Detecting C++ project... "
+echo -n "Detecting  project... "
 PROJECT_INFO=$("${PLUGIN_DIR}/lib/detect-project.sh" "$(pwd)" 2>/dev/null || echo '{}')
 COMPILER=$(echo "$PROJECT_INFO" | jq -r '.compiler // "unknown"')
 BUILD_SYS=$(echo "$PROJECT_INFO" | jq -r '.build_system // "unknown"')
