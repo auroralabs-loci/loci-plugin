@@ -97,6 +97,7 @@ else
   echo '{
   "mcpServers": {
     "loci-mcp": {
+      "type": "http",
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }
   }
