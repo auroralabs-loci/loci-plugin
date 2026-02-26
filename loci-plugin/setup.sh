@@ -59,24 +59,59 @@ echo -e "${GREEN}OK${NC}"
 VENV_DIR="${PLUGIN_DIR}/.venv"
 WHEEL_DIR="${PLUGIN_DIR}/slicer-wheels"
 SLICER_AVAILABLE=false
+SLICER_LOG="${PLUGIN_DIR}/state/slicer-setup.log"
+
+install_slicer() {
+  : > "$SLICER_LOG"
+
+  if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR" >> "$SLICER_LOG" 2>&1 || return 1
+  fi
+
+  [ -x "${VENV_DIR}/bin/pip" ] || return 1
+
+  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
+  "${VENV_DIR}/bin/pip" install --quiet "mcp>=1.0.0" >> "$SLICER_LOG" 2>&1 || return 1
+  "${VENV_DIR}/bin/pip" install --force-reinstall "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
+
+  # The wheel may have undeclared dependencies — detect and install them
+  for _attempt in 1 2 3 4 5; do
+    MISSING=$("${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>&1 \
+      | grep "ModuleNotFoundError" | head -1 \
+      | sed "s/.*No module named '\([^']*\)'.*/\1/")
+    if [ -z "$MISSING" ]; then
+      return 0
+    fi
+    echo "Installing undeclared dependency: ${MISSING}" >> "$SLICER_LOG"
+    "${VENV_DIR}/bin/pip" install --quiet "$MISSING" >> "$SLICER_LOG" 2>&1 || return 1
+  done
+
+  # Final verify after all deps installed
+  "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$SLICER_LOG" || return 1
+}
 
 echo -n "Setting up slicer environment... "
 if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
-  if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR" 2>/dev/null
-  fi
-  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip 2>/dev/null
-  "${VENV_DIR}/bin/pip" install --quiet "mcp>=1.0.0" 2>/dev/null
-  "${VENV_DIR}/bin/pip" install --quiet --force-reinstall "${WHEEL_DIR}"/*.whl 2>/dev/null
-  # Verify import works
-  if "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
+  if ! install_slicer; then
+    # Stale or broken venv — nuke and retry once
+    rm -rf "$VENV_DIR"
+    if install_slicer; then
+      SLICER_AVAILABLE=true
+      echo -e "${GREEN}OK (rebuilt venv)${NC}"
+    else
+      echo -e "${YELLOW}FAILED${NC}"
+      echo -e "  ${YELLOW}See details: cat ${SLICER_LOG}${NC}"
+      LAST_ERR=$(grep -iE '(error|no matching|not a supported|incompatible)' "$SLICER_LOG" | tail -1)
+      if [ -n "$LAST_ERR" ]; then
+        echo -e "  ${YELLOW}${LAST_ERR}${NC}"
+      fi
+    fi
+  else
     SLICER_AVAILABLE=true
     echo -e "${GREEN}OK${NC}"
-  else
-    echo -e "${YELLOW}wheel installed but import failed${NC}"
   fi
 else
-  echo -e "${YELLOW}no wheels found in slicer-wheels/ — slicer disabled${NC}"
+  echo -e "${YELLOW}no wheels in slicer-wheels/ — slicer disabled${NC}"
 fi
 
 # 5. Detect project
@@ -121,10 +156,12 @@ else
   echo '{
   "mcpServers": {
     "loci-mcp": {
+      "type": "http",
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }
   }
-}' > "${PROJECT_ROOT}/.mcp.json"
+}
+' > "${PROJECT_ROOT}/.mcp.json"
   echo -e "  ${GREEN}Created${NC}"
 fi
 
@@ -142,6 +179,64 @@ if [ "$SLICER_AVAILABLE" = true ]; then
   fi
 fi
 
+# 8. Register hooks with Claude Code
+echo -n "Registering hooks... "
+SETTINGS_FILE="${PROJECT_ROOT}/.claude/settings.json"
+mkdir -p "${PROJECT_ROOT}/.claude"
+
+if [ -f "$SETTINGS_FILE" ] && grep -q "capture-action.sh" "$SETTINGS_FILE" 2>/dev/null; then
+  echo -e "${GREEN}already registered${NC}"
+else
+  # Replace plugin root variable with absolute path using jq
+  HOOKS_CONFIG=$(jq --arg pd "${PLUGIN_DIR}" '
+    def replace_plugin_root:
+      if type == "string" then
+        gsub("\\$\\{CLAUDE_PLUGIN_ROOT\\}"; $pd) |
+        gsub("\\$CLAUDE_PLUGIN_ROOT"; $pd)
+      elif type == "array" then map(replace_plugin_root)
+      elif type == "object" then to_entries | map(.value |= replace_plugin_root) | from_entries
+      else .
+      end;
+    replace_plugin_root
+  ' "${PLUGIN_DIR}/hooks/hooks.json")
+
+  if [ -f "$SETTINGS_FILE" ]; then
+    # Merge hooks into existing settings.json
+    HOOKS_ONLY=$(echo "$HOOKS_CONFIG" | jq '.hooks')
+    if jq --argjson hooks "$HOOKS_ONLY" '. + {hooks: $hooks}' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
+      mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+      echo -e "${GREEN}OK (merged into existing settings.json)${NC}"
+    else
+      rm -f "${SETTINGS_FILE}.tmp"
+      echo -e "${YELLOW}FAILED to merge — add hooks manually${NC}"
+    fi
+  else
+    echo "$HOOKS_CONFIG" > "$SETTINGS_FILE"
+    echo -e "${GREEN}OK${NC}"
+  fi
+fi
+
+# 9. Install slash commands
+echo -n "Installing slash commands... "
+COMMANDS_DIR="${PROJECT_ROOT}/.claude/commands"
+mkdir -p "$COMMANDS_DIR"
+CMD_COUNT=0
+for skill_dir in "${PLUGIN_DIR}/skills"/*/; do
+  if [ -f "${skill_dir}SKILL.md" ]; then
+    skill_name=$(basename "$skill_dir")
+    cp "${skill_dir}SKILL.md" "${COMMANDS_DIR}/${skill_name}.md"
+    CMD_COUNT=$((CMD_COUNT + 1))
+  fi
+done
+echo -e "${GREEN}OK (${CMD_COUNT} commands: $(ls "${COMMANDS_DIR}"/*.md 2>/dev/null | xargs -I{} basename {} .md | paste -sd', '))${NC}"
+
+# 10. Install LOCI context for Claude (optional)
+if [ -f "${PLUGIN_DIR}/CLAUDE.md" ]; then
+  echo -n "Installing LOCI context... "
+  cp "${PLUGIN_DIR}/CLAUDE.md" "${PROJECT_ROOT}/.claude/CLAUDE.md"
+  echo -e "${GREEN}OK${NC}"
+fi
+
 echo ""
 echo -e "${GREEN}Setup complete!${NC}"
 echo ""
@@ -154,6 +249,8 @@ echo "  - Inject performance/regression warnings into Claude's context"
 if [ "$SLICER_AVAILABLE" = true ]; then
 echo "  - Analyze ELF binaries locally via loci-slicer (symbols, assembly, blocks, diff)"
 fi
+echo ""
+echo "Slash commands: /analyze, /slice"
 echo ""
 echo "Restart Claude Code to activate."
 echo ""

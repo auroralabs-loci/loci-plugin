@@ -15,6 +15,7 @@ Tools:
 import csv
 import io
 import json
+import logging
 import os
 import re
 import sys
@@ -82,14 +83,19 @@ def run_slicer(elf_path: str, architecture: str | None = None) -> dict:
         raise FileNotFoundError(f"ELF file not found: {elf_path}")
 
     with tempfile.TemporaryDirectory(prefix="loci-slicer-") as tmpdir:
-        args = {
-            "input": str(elf),
-            "output": tmpdir,
+        kwargs = {
+            "elf_file_path": str(elf),
+            "log": logging.getLogger("loci.slicer"),
         }
         if architecture:
-            args["architecture"] = architecture
+            kwargs["architecture"] = architecture
 
-        asmslicer.process(args)
+        # Set individual output file paths for all output types
+        for otype, kwarg in OUTPUT_TYPE_TO_KWARG.items():
+            stem = OUTPUT_TYPE_TO_STEM[otype]
+            kwargs[kwarg] = os.path.join(tmpdir, f"{stem}.csv")
+
+        asmslicer.process(**kwargs)
 
         # Read all generated output files
         files = {}
@@ -228,7 +234,7 @@ async def list_tools() -> list[Tool]:
                 "Extract per-function assembly from an ELF binary in the exact format "
                 "the LOCI timing backend expects. Returns assembly, metadata, and a "
                 "pre-formatted timing_csv for direct pass-through to "
-                "mcp__loci-mcp__get_assembly_block_timings."
+                "mcp__loci-mcp__get_assembly_block_exec_behavior."
             ),
             inputSchema={
                 "type": "object",
@@ -332,6 +338,16 @@ OUTPUT_TYPE_TO_STEM = {
     "segments": "segments",
     "callgraph": "callgraph",
     "elfinfo": "elfinfo",
+}
+
+# Map output_type names to asmslicer.process() keyword argument names
+OUTPUT_TYPE_TO_KWARG = {
+    "asm": "out_asm_file",
+    "symbols": "out_sym_map_file",
+    "blocks": "blocks_file_path",
+    "segments": "output_file_path",
+    "callgraph": "out_plot_file",
+    "elfinfo": "out_elfinfo_file",
 }
 
 
@@ -529,15 +545,16 @@ async def _diff_elfs(args: dict) -> list[TextContent]:
         )]
 
     with tempfile.TemporaryDirectory(prefix="loci-slicer-diff-") as tmpdir:
-        diff_args = {
-            "input": elf_path,
-            "comparing": comparing_elf_path,
-            "output": tmpdir,
+        diff_kwargs = {
+            "elf_file_path": elf_path,
+            "comparing_elf_file_path": comparing_elf_path,
+            "compare_out": tmpdir,
+            "log": logging.getLogger("loci.slicer"),
         }
         if arch:
-            diff_args["architecture"] = arch
+            diff_kwargs["architecture"] = arch
 
-        asmslicer.process(diff_args)
+        asmslicer.process(**diff_kwargs)
 
         # Read diff output
         files = {}

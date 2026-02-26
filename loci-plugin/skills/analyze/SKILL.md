@@ -11,8 +11,9 @@ disable-model-invocation: true
    - elf_path: <compiled binary>
    - functions: ["$ARGUMENTS"]
    If slicer unavailable, fallback: `objdump -d <binary> | sed -n '/<function>/,/^$/p'`
-3. Call mcp__loci-mcp__get_assembly_block_timings_per_function with:
-   - function_name, assembly_code (from step 2), architecture
+3. Call mcp__loci-mcp__get_assembly_block_exec_behavior with:
+   - csv_text: timing_csv from step 2 (or build CSV with function_name,assembly_code)
+   - architecture: from step 2's timing_architecture
 4. Report timing in microseconds with standard deviation
 
 Architecture is auto-detected by the slicer. Supported: cortex-a53, cortex-m4, tc399.
