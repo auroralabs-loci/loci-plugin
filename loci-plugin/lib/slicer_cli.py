@@ -10,6 +10,7 @@ Subcommands:
   extract-assembly   — Per-function assembly in timing-backend-ready format
   extract-symbols    — Symbol map from an ELF
   diff-elfs          — Compare two ELF binaries
+  blocks-to-timing   — Transform blocks CSV to timing-backend CSV format
 """
 
 import argparse
@@ -201,6 +202,44 @@ def match_function(query: str, sym_name: str, sym_long_name: str) -> bool:
     return False
 
 
+def parse_blocks_to_timing_csv(blocks_text: str,
+                                functions: list[str] | None = None) -> str:
+    """Parse blocks CSV and produce timing-format CSV.
+
+    Blocks CSV columns: s1.name, s1.long_name, r.from_addr, r.to_addr,
+                        r.asm, db.block_ids, r.src_location
+
+    Output CSV: function_name, assembly_code
+        function_name = {s1.long_name}_{r.from_addr}
+        assembly_code = r.asm (as-is)
+    """
+    reader = csv.DictReader(io.StringIO(blocks_text))
+
+    csv_buf = io.StringIO()
+    writer = csv.writer(csv_buf)
+    writer.writerow(["function_name", "assembly_code"])
+
+    for row in reader:
+        long_name = row.get("s1.long_name", "")
+        from_addr = row.get("r.from_addr", "")
+        asm = row.get("r.asm", "")
+
+        if not long_name or not asm:
+            continue
+
+        # Filter by function names if specified
+        if functions:
+            short_name = row.get("s1.name", "")
+            if not any(match_function(f, short_name, long_name)
+                       for f in functions):
+                continue
+
+        function_name = f"{long_name}_{from_addr}"
+        writer.writerow([function_name, asm])
+
+    return csv_buf.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Subcommand implementations
 # ---------------------------------------------------------------------------
@@ -334,13 +373,16 @@ def extract_assembly(elf_path: str, functions: list[str],
         # CSV row: quote the assembly for proper CSV formatting
         csv_rows.append((fname, asm))
 
-    # Build timing CSV
-    csv_buf = io.StringIO()
-    writer = csv.writer(csv_buf)
-    writer.writerow(["function_name", "assembly_code"])
-    for fname, asm in csv_rows:
-        writer.writerow([fname, asm])
-    timing_csv = csv_buf.getvalue()
+    # Build timing CSV — prefer per-block granularity when blocks available
+    if blocks_file and blocks_text:
+        timing_csv = parse_blocks_to_timing_csv(blocks_text, functions)
+    else:
+        csv_buf = io.StringIO()
+        writer = csv.writer(csv_buf)
+        writer.writerow(["function_name", "assembly_code"])
+        for fname, asm in csv_rows:
+            writer.writerow([fname, asm])
+        timing_csv = csv_buf.getvalue()
 
     output = {
         "architecture": detected_arch,
@@ -429,6 +471,19 @@ def diff_elfs(elf_path: str, comparing_elf_path: str,
     }
 
 
+def blocks_to_timing(blocks_file: str,
+                     functions: list[str] | None = None) -> None:
+    """Read blocks CSV and print timing-format CSV to stdout."""
+    blocks_path = Path(blocks_file)
+    if not blocks_path.is_file():
+        print(json.dumps({"error": f"Blocks file not found: {blocks_file}"}))
+        sys.exit(1)
+
+    blocks_text = blocks_path.read_text()
+    timing_csv = parse_blocks_to_timing_csv(blocks_text, functions)
+    print(timing_csv, end="")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -480,9 +535,25 @@ def main():
     p_diff.add_argument("--comparing-elf-path", required=True, help="Path to the changed ELF binary")
     p_diff.add_argument("--arch", default=None, help="Target architecture (auto-detected if omitted)")
 
+    # blocks-to-timing
+    p_blocks = subparsers.add_parser(
+        "blocks-to-timing",
+        help="Transform blocks CSV to timing-backend CSV format",
+    )
+    p_blocks.add_argument("--blocks", required=True, metavar="FILE",
+                          help="Path to blocks CSV file")
+    p_blocks.add_argument("--functions", default=None,
+                          help="Comma-separated function names to filter")
+
     args = parser.parse_args()
 
     try:
+        if args.command == "blocks-to-timing":
+            funcs = ([f.strip() for f in args.functions.split(",")]
+                     if args.functions else None)
+            blocks_to_timing(blocks_file=args.blocks, functions=funcs)
+            sys.exit(0)
+
         if args.command == "slice-elf":
             output_types = [t.strip() for t in args.output_types.split(",")]
             result = slice_elf(

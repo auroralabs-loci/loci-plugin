@@ -9,34 +9,33 @@ Analyze one or more functions from a compiled binary. "$ARGUMENTS" contains the 
 
 ## Steps
 
-1. **Compile** the target file with appropriate flags for the architecture:
+1. **Cross-compile** the target file for aarch64:
    ```
-   arm-none-eabi-gcc -O2 -march=cortex-m4 -c <source> -o <output.o>
+   aarch64-linux-gnu-g++ -O2 -march=armv8-a -o <output> <source>
    ```
-   Ask the user for the architecture if not obvious from the project. Supported: `cortex-a53`, `cortex-m4`, `tc399`.
 
-2. **Extract assembly** for each function using objdump:
+2. **Extract assembly** with per-block granularity using the slicer:
    ```
-   objdump -d <binary> | sed -n '/<function_name>/,/^$/p'
+   ${LOCI_SLICER} extract-assembly --elf-path <binary> --functions <funcs> --blocks blocks.csv
    ```
-   If no specific functions were requested, list all functions with `objdump -t <binary>` and select the user-defined ones (skip compiler-generated symbols).
+   The JSON output contains `timing_csv` (per-block rows like `calculate_0x718,...`) and `timing_architecture`.
 
-3. **Build the CSV input** with one row per function — no header row:
-   ```
-   function_name_1,<assembly block 1>
-   function_name_2,<assembly block 2>
-   ```
-   Each assembly block is the full objdump output for that function (hex addresses, opcodes, mnemonics).
+   If no specific functions were requested, first run `${LOCI_SLICER} extract-symbols --elf-path <binary>` to list symbols, then select the user-defined ones.
 
-4. **Call the batch MCP tool**:
+   For standalone block transform (e.g., from a previously saved blocks CSV):
+   ```
+   ${LOCI_SLICER} blocks-to-timing --blocks blocks.csv --functions <funcs>
+   ```
+
+3. **Call the batch MCP tool**:
    ```
    mcp__loci-plugin__get_assembly_block_exec_behavior
    ```
    Parameters:
-   - `input_csv`: the CSV built in step 3
-   - `architecture`: the target architecture (e.g., `cortex-m4`)
+   - `csv_text`: the `timing_csv` value from step 2's JSON output (or stdout from `blocks-to-timing`)
+   - `architecture`: `cortex-a53`
 
-5. **Report results** in a table:
+4. **Report results** in a table:
 
    | Function | Exec Time | Std Dev | Energy |
    |----------|-----------|---------|--------|
