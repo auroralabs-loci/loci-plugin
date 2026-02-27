@@ -30,7 +30,7 @@ Analyze one or more functions from a compiled binary. "$ARGUMENTS" contains the 
 
 4. **Call the batch MCP tool**:
    ```
-   mcp__loci-mcp__get_assembly_block_exec_behavior
+   mcp__loci-plugin__get_assembly_block_exec_behavior
    ```
    Parameters:
    - `input_csv`: the CSV built in step 3

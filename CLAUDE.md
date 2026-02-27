@@ -47,7 +47,7 @@ Claude Code fires shell hooks at `SessionStart`, `PreToolUse`, `PostToolUse`, an
 `loci_bridge.py` runs as a persistent background daemon (started by `session-lifecycle.sh` at `SessionStart`, PID stored in `state/bridge.pid`). It wakes on `SIGUSR1` or every `poll_interval` seconds, reads up to `batch_size` queue files, updates the session timeline in `state/loci-context.json`, runs `CppAnalyzer` heuristics against file contents and compiler flags, and writes results to `state/loci-warnings.json` and `state/loci-metrics.json`. The bridge makes **no outbound HTTP calls** — it is purely local.
 
 **Remote side (Claude Code → LOCI MCP server directly)**
-Claude Code connects to the LOCI MCP server via SSE (configured in `.mcp.json` at the project root). Claude calls `mcp__loci-plugin__get_assembly_block_timings` (batch) or `mcp__loci-plugin__get_assembly_block_timings_per_function` (single) directly — the bridge is not involved. The bridge does capture these MCP calls as `loci_mcp_tool` actions for the session timeline.
+Claude Code connects to the LOCI MCP server via SSE (configured in `.mcp.json` at the project root). Claude calls `mcp__loci-plugin__get_assembly_block_exec_behavior` directly — the bridge is not involved. The bridge does capture these MCP calls as `loci_mcp_tool` actions for the session timeline.
 
 ### Data flow for a typical C++ optimization task
 
@@ -59,8 +59,8 @@ Claude compiles a binary
   → bridge wakes, updates file timeline, checks for missing -O / -march / debug flags
   → Claude runs objdump on the binary
   → PostToolUse: classify as binary_analysis, queue JSON
-  → Claude calls mcp__loci-plugin__get_assembly_block_timings_per_function
-  → LOCI server returns execution_time_ns + std_dev_ns + energy_ws
+  → Claude calls mcp__loci-plugin__get_assembly_block_exec_behavior
+  → LOCI server returns execution_time_ns, std_dev_ns, energy_ws
   → Claude reports timing, energy consumption, and optimizes
 ```
 
@@ -110,11 +110,23 @@ Two separate configs must stay consistent:
 - **`.mcp.json`** (project root) — Claude Code's MCP connection URL; created by `setup.sh`
 - **`loci-plugin/config/loci.json`** — Bridge settings; `mcp_server_name` must match the server name in `.mcp.json`
 
+### Slicer CLI
+
+`loci-plugin/lib/slicer_cli.py` is a local CLI tool for ELF binary analysis, called via Bash. It wraps the `asmslicer` library installed in the plugin's venv. The full command path is baked into skill files during `setup.sh`.
+
+```bash
+<slicer> slice-elf --elf-path PATH [--arch ARCH] [--output-types asm,symbols,...]
+<slicer> extract-assembly --elf-path PATH --functions func1,func2 [--arch ARCH]
+<slicer> extract-symbols --elf-path PATH [--arch ARCH]
+<slicer> diff-elfs --elf-path PATH --comparing-elf-path PATH [--arch ARCH]
+```
+
+Output is JSON to stdout. `extract-assembly` includes `timing_csv` and `timing_architecture` for direct handoff to the timing backend.
+
 ### MCP server tools
 
 Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.
 
-- `mcp__loci-plugin__get_assembly_block_exec_behavior` — Batch: input CSV `(function_name, assembly_code)`, returns CSV `(function_name, execution_time_ns, std_dev_ns, energy_ws)`. Use to compare performance between function versions, identify high-cost functions, or get hardware-aware estimates without running on real hardware. `energy_ws` is estimated energy in Watt-seconds (Joules), derived from execution_time_ns and an architecture-dependent energy constant (nanojoules per nanosecond).
-- `mcp__loci-plugin__get_assembly_block_exec_behavior_per_function` — Single function: returns `execution_time_ns` + `std_dev_ns` + `energy_ws`
+- `mcp__loci-plugin__get_assembly_block_exec_behavior` — Accepts a CSV of `(function_name, assembly_code)` and a target architecture, returns predicted `execution_time_ns`, `std_dev_ns`, and `energy_ws` per function. `energy_ws` is estimated energy in Watt-seconds (Joules), derived from execution_time_ns and an architecture-dependent energy constant (nanojoules per nanosecond).
 
-The typical workflow when asked to time a function: compile with the target architecture flag (e.g., `-march=cortex-m4`), extract its assembly with `objdump -d`, call the appropriate LOCI MCP tool.
+The typical workflow when asked to analyze a function: compile with the target architecture flag (e.g., `-march=cortex-m4`), extract its assembly via the slicer (or `objdump -d`), call `get_assembly_block_exec_behavior`.

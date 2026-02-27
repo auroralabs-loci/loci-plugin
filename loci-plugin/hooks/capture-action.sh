@@ -4,7 +4,7 @@
 # Classifies actions for LOCI binary-level execution-aware analysis.
 # Receives JSON on stdin from Claude Code hook system.
 
-set -euo pipefail
+set +e
 
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${PLUGIN_DIR}/state"
@@ -54,21 +54,22 @@ if [ -z "$TOOL_NAME" ]; then
 fi
 
 # Build the action record with error handling
-if ! ACTION_RECORD=$(jq -n \
+# Pipe $INPUT through stdin instead of --argjson to avoid shell argument
+# parsing issues with large or special-character-containing JSON.
+if ! ACTION_RECORD=$(echo "$INPUT" | jq \
   --arg event "$HOOK_EVENT" \
   --arg session "$SESSION_ID" \
   --arg tool "$TOOL_NAME" \
   --arg cwd "$CWD" \
   --arg ts "$TIMESTAMP" \
-  --argjson input "$INPUT" \
   '{
     event: $event,
     session_id: $session,
     tool_name: $tool,
     cwd: $cwd,
     timestamp: $ts,
-    tool_input: ($input.tool_input // {}),
-    tool_response: ($input.tool_response // null)
+    tool_input: (.tool_input // {}),
+    tool_response: (.tool_response // null)
   }' 2>/dev/null); then
     log_error "Failed to build action record for tool: $TOOL_NAME"
     exit 0
@@ -115,6 +116,9 @@ classify_action() {
       # Diff on asm/binary files
       elif echo "$cmd" | grep -qiE 'diff.*\.(asm|s|o|bin)'; then
         echo "binary_diff"
+      # LOCI slicer CLI
+      elif echo "$cmd" | grep -qiE 'slicer_cli\.py'; then
+        echo "loci_slicer_tool"
       # Package management
       elif echo "$cmd" | grep -qiE '(conan|vcpkg|apt|brew)\s+install'; then
         echo "dependency_install"
@@ -166,7 +170,7 @@ classify_action() {
       echo "agent_delegation"
       ;;
     *)
-      if echo "$tool" | grep -q "^mcp__loci-mcp__"; then
+      if echo "$tool" | grep -q "^mcp__loci-plugin__"; then
         echo "loci_mcp_tool"
       elif echo "$tool" | grep -q "^mcp__"; then
         echo "mcp_tool_call"
@@ -188,13 +192,17 @@ extract_files() {
     [
       .tool_input.file_path,
       .tool_input.path,
-      (.tool_input.command // "" | capture("(?<f>[/~.][^ \"]+\\.[a-zA-Z0-9]+)") | .f),
-      (.tool_input.command // "" | capture("-o\\s+(?<f>[^ \"]+)") | .f)
+      (try (.tool_input.command // "" | capture("(?<f>[/~.][^ \"]+\\.[a-zA-Z0-9]+)") | .f)),
+      (try (.tool_input.command // "" | capture("-o\\s+(?<f>[^ \"]+)") | .f))
     ] | map(select(. != null and . != "")) | unique | .[]
   ' 2>/dev/null || true
 }
 
-FILES_INVOLVED=$(extract_files "$INPUT" | jq -R -s 'split("\n") | map(select(length > 0))')
+FILES_INVOLVED=$(extract_files "$INPUT" | jq -R -s 'split("\n") | map(select(length > 0))' 2>/dev/null) || true
+# Ensure FILES_INVOLVED is valid JSON for --argjson
+if [ -z "$FILES_INVOLVED" ] || ! echo "$FILES_INVOLVED" | jq empty 2>/dev/null; then
+  FILES_INVOLVED='[]'
+fi
 
 # ---------------------------------------------------------------
 # Extract C++ compiler context for LOCI
@@ -216,8 +224,13 @@ if [ "$ACTION_TYPE" = "cpp_compile" ] || [ "$ACTION_TYPE" = "cpp_build" ] || [ "
   OPTIMIZATION_LEVEL=$(echo "$CMD" | grep -oE '\-O[0-3sg]' | head -1 || true)
 fi
 
+# Ensure COMPILER_FLAGS is valid JSON for --argjson
+if [ -z "$COMPILER_FLAGS" ] || ! echo "$COMPILER_FLAGS" | jq empty 2>/dev/null; then
+  COMPILER_FLAGS='[]'
+fi
+
 # Enrich the action record with C++ classification
-ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
+if ! ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
   --arg action_type "$ACTION_TYPE" \
   --argjson files "$FILES_INVOLVED" \
   --argjson compiler_flags "$COMPILER_FLAGS" \
@@ -231,7 +244,10 @@ ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
       output_binary: $output_binary,
       optimization_level: $optimization_level
     }
-  }')
+  }' 2>/dev/null); then
+    log_error "Failed to enrich record (action_type=$ACTION_TYPE files=$FILES_INVOLVED compiler_flags=$COMPILER_FLAGS)"
+    ENRICHED_RECORD="$ACTION_RECORD"
+fi
 
 # Write to action log with error handling
 if ! echo "$ENRICHED_RECORD" >> "$LOG_FILE" 2>/dev/null; then
@@ -266,7 +282,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ]; then
           if jq -n --arg msg "LOCI Warning: $WARNING" '{
             hookSpecificOutput: {
               hookEventName: "PreToolUse",
-              "additionalContext": $msg + " C++ file changed. Call mcp__loci-mcp__get_assembly_block_timings_per_function to analyze timing for the modified function."
+              "additionalContext": $msg + " C++ file changed. Call mcp__loci-plugin__get_assembly_block_exec_behavior to analyze execution behavior for the modified function."
             }
           }' 2>/dev/null; then
             exit 0
@@ -280,7 +296,7 @@ fi
 # For PostToolUse: queue binary-producing actions for LOCI deep analysis
 if [ "$HOOK_EVENT" = "PostToolUse" ]; then
   case "$ACTION_TYPE" in
-    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff)
+    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff|loci_slicer_tool)
       ANALYSIS_QUEUE="${STATE_DIR}/analysis-queue"
       if mkdir -p "$ANALYSIS_QUEUE" 2>/dev/null; then
         if ! echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json" 2>/dev/null; then

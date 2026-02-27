@@ -14,18 +14,18 @@ The plugin has two sides:
 
 ## MCP Tools
 
-The LOCI server (v1.25.0) exposes two tools. Claude calls them as `mcp__loci-mcp__<name>`.
+The LOCI server (v1.25.0) exposes two tools. Claude calls them as `mcp__loci-plugin__<name>`.
 
-### `get_assembly_block_timings`
+### `get_assembly_block_exec_behavior`
 
-Predicts execution time for **multiple functions** in one call.
+Provides execution behavior (time and energy consumption) for one or more assembly blocks.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `csv_text` | string | CSV with columns `function_name` and `assembly_code` |
 | `architecture` | string | Target architecture (see below) |
 
-**Returns:** CSV with columns `function_name`, `execution_time_ns`, `std_dev_ns`
+**Returns:** Predicted `execution_time_ns`, `std_dev_ns`, and `energy_ws` (estimated energy in Watt-seconds/Joules) per function
 
 **Example `csv_text`:**
 ```
@@ -33,20 +33,6 @@ function_name,assembly_code
 process_frame,"push {r4-r7, lr}\n ldr r3, [r0]\n ..."
 update_state,"push {r4, lr}\n vmov.f32 s0, #0\n ..."
 ```
-
----
-
-### `get_assembly_block_timings_per_function`
-
-Predicts execution time for a **single function**.
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `function_name` | string | Name of the function |
-| `assembly_code` | string | Full assembly of the function |
-| `architecture` | string | Target architecture (see below) |
-
-**Returns:** `execution_time_ns` and `std_dev_ns` for the function
 
 ---
 
@@ -107,7 +93,7 @@ Created automatically by `setup.sh`. Tells Claude Code where to find the LOCI se
 ```json
 {
   "mcpServers": {
-    "loci-mcp": {
+    "loci-plugin": {
       "url": "https://dev.local.mcp.loci-dev.net/mcp"
     }
   }
@@ -121,7 +107,7 @@ Controls the local `loci_bridge.py` process:
 ```json
 {
   "mcp_server_url": "https://dev.local.mcp.loci-dev.net/mcp",
-  "mcp_server_name": "loci-mcp",
+  "mcp_server_name": "loci-plugin",
   "poll_interval": 2.0,
   "batch_size": 10,
   "analysis_timeout": 30.0,
@@ -155,15 +141,15 @@ An interactive setup wizard is also available:
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                        Claude Code                           │
-│  (calls mcp__loci-mcp__ tools; receives hook warnings)       │
+│  (calls mcp__loci-plugin__ tools; receives hook warnings)       │
 └──────┬───────────────────────────────────────┬───────────────┘
        │ Hook Events                           │ MCP / SSE
        ▼                                       ▼
 ┌────────────────────────┐   ┌────────────────────────────────┐
 │  hooks/hooks.json      │   │  LOCI MCP Server (remote)      │
-│  ├─ SessionStart/End   │   │  ├─ get_assembly_block_timings │
-│  ├─ PreToolUse         │   │  └─ get_assembly_block_timings │
-│  ├─ PostToolUse        │   │       _per_function            │
+│  ├─ SessionStart/End   │   │  └─ get_assembly_block_exec    │
+│  ├─ PreToolUse         │   │       _behavior                │
+│  ├─ PostToolUse        │   │                                │
 │  └─ Stop               │   │  Targets: cortex-a53,          │
 └──────┬─────────────────┘   │  cortex-m4, tc399              │
        │                     └────────────────────────────────┘
@@ -245,11 +231,10 @@ Claude:
 1. Compiles with: g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
    (LOCI hook captures flags and output binary)
 2. Extracts assembly: objdump -d sensor | sed -n '/<process_sensor_data>/,/^$/p'
-3. Calls mcp__loci-mcp__get_assembly_block_timings_per_function:
-     function_name: "process_sensor_data"
-     assembly_code: "<extracted asm>"
+3. Calls mcp__loci-plugin__get_assembly_block_exec_behavior:
+     csv_text: "function_name,assembly_code\nprocess_sensor_data,\"<extracted asm>\""
      architecture: "cortex-m4"
-4. LOCI returns: execution_time_ns=1240, std_dev_ns=85
+4. LOCI returns: execution_time_ns=1240, std_dev_ns=85, energy_ws=0.00012
 5. Reports: "~1.24 µs ± 85 ns on Cortex-M4"
 ```
 
@@ -260,9 +245,9 @@ User: "Does -O3 help my DSP loop on Cortex-A53?"
 
 Claude:
 1. Compiles with -O2, extracts assembly for the loop function
-2. Calls get_assembly_block_timings → 920 ns baseline
+2. Calls get_assembly_block_exec_behavior → 920 ns baseline
 3. Recompiles with -O3 -march=cortex-a53, extracts new assembly
-4. Calls get_assembly_block_timings → 660 ns
+4. Calls get_assembly_block_exec_behavior → 660 ns
 5. Reports: "-O3 + -march saves 260 ns (28%) on Cortex-A53"
 ```
 
@@ -274,7 +259,7 @@ User: "Did the refactor slow anything down?"
 Claude:
 1. Identifies functions that changed (via git diff + objdump)
 2. Builds CSV of all changed functions with their new assembly
-3. Calls get_assembly_block_timings (batch) with architecture: "tc399"
+3. Calls get_assembly_block_exec_behavior with architecture: "tc399"
 4. Compares against baseline timing from before the refactor
 5. Flags: "update_matrix() regressed by 340 ns on tc399"
 ```
@@ -413,7 +398,7 @@ loci-plugin/
     │   └── monitor-hooks.py       # Hook performance monitor
     ├── skills/
     │   └── analyze/
-    │       └── SKILL.md           # /loci-mcp:analyze skill
+    │       └── SKILL.md           # /loci-plugin:analyze skill
     └── state/                     # Runtime state (auto-created)
         ├── loci-warnings.json     # Active heuristic warnings
         ├── loci-context.json      # Session action timeline

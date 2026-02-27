@@ -1,5 +1,74 @@
 # LOCI MCP Plugin Changelog
 
+## Version 1.2.0 - February 2026
+
+### ASM Slicer — Local ELF Binary Analysis (Bundled CLI)
+
+Added a local ELF binary slicer wrapping the `asmslicer` library as a bundled CLI tool (`slicer_cli.py`). Claude calls it via Bash — no extra MCP server to configure. One MCP server (`loci-plugin` for remote timing), one local CLI tool (the slicer).
+
+**Slicer CLI subcommands:**
+```
+slicer_cli.py slice-elf --elf-path PATH [--arch ARCH] [--output-types asm,symbols,...]
+slicer_cli.py extract-assembly --elf-path PATH --functions func1,func2 [--arch ARCH]
+slicer_cli.py extract-symbols --elf-path PATH [--arch ARCH]
+slicer_cli.py diff-elfs --elf-path PATH --comparing-elf-path PATH [--arch ARCH]
+```
+
+Output is JSON to stdout.
+
+- **`slice-elf`** — Full binary analysis: pick any combination of asm, symbols, blocks, segments, callgraph, elfinfo
+- **`extract-assembly`** — Per-function disassembly formatted for the timing backend, with ready-to-use `timing_csv` and `timing_architecture`
+- **`extract-symbols`** — Symbol map: name, demangled name, address, size, namespace
+- **`diff-elfs`** — Binary diff: added/removed/modified symbols with similarity ratios
+
+**New file:** `loci-plugin/lib/slicer_cli.py`
+
+### Unified MCP Tool API
+
+Consolidated the two timing tools into a single tool:
+- **Removed:** `get_assembly_block_timings` (batch) and `get_assembly_block_timings_per_function` (single)
+- **Added:** `get_assembly_block_exec_behavior` — accepts a CSV of `(function_name, assembly_code)` and a target architecture, returns `execution_time_ns`, `std_dev_ns`, and `energy_ws` (estimated energy in Watt-seconds/Joules) per function
+
+All references updated across CLAUDE.md, Readme.md, hooks, skills, and the regression checker prompt.
+
+### Setup Overhaul (`setup.sh`)
+
+- **Slicer install with retry**: Refactored into `install_slicer()` function that detects and installs undeclared wheel dependencies automatically (up to 5 rounds), and rebuilds the venv from scratch on failure
+- **Cross-platform venv detection**: Detects `bin/python` (Linux/macOS) or `Scripts/python.exe` (Windows Git Bash/WSL) and builds `LOCI_SLICER_CMD` for skill templating
+- **Skill templating**: Slash command installation uses `sed` to replace `${LOCI_SLICER}` placeholder in skill files with the full venv Python + script path (no shell wrapper needed)
+- **Hook registration** (new step 8): Automatically registers hooks into `.claude/settings.json` with absolute paths resolved from `hooks.json`
+- **LOCI context installation** (new step 10): Copies `CLAUDE.md` into `.claude/` for Claude context
+- **MCP type updated**: Changed from implicit SSE to explicit `"type": "http"` in `.mcp.json`
+- **Better error reporting**: Slicer setup failures now log to `state/slicer-setup.log` with the last error shown inline
+
+### Hook Robustness (`capture-action.sh`)
+
+- **Fixed large-input crash**: Action record building now pipes `$INPUT` through stdin instead of `--argjson`, avoiding shell argument size limits and special-character parsing issues
+- **Safer regex extraction**: `extract_files` jq expressions wrapped in `try` to prevent crashes on non-matching inputs
+- **Input validation**: `FILES_INVOLVED` and `COMPILER_FLAGS` are validated as JSON before being passed to `--argjson`, falling back to `[]` on failure
+
+### New Skill: `/slice`
+
+- **`skills/slice/SKILL.md`** — Slash command for ELF binary exploration. Runs the slicer and presents symbols, disassembly, blocks, callgraph, and binary diffs
+
+### Updated Skill: `/analyze`
+
+- Updated to use `get_assembly_block_exec_behavior` with CSV format
+- Uses `timing_csv` and `timing_architecture` from slicer output for seamless handoff
+
+### New Documentation
+
+- **`INSTALL.md`** — End-to-end installation guide covering prerequisites, plugin placement, wheel setup, running `setup.sh`, verification, usage scenarios, architecture support, slicer tool reference, and troubleshooting
+
+### Other Changes
+
+- **Removed** `loci-plugin/.mcp.json` — MCP config is now generated at the project root by `setup.sh`, not shipped inside the plugin
+- **Version**: `plugin.json` set to `1.2.0`
+- **Regression checker** (`hooks.json`): Updated agent prompt to call `get_assembly_block_exec_behavior` instead of `get_assembly_block_timings`
+- **Slicer API** (`slicer_cli.py`): Uses keyword-based `asmslicer.process(**kwargs)` with per-output-type file paths via `OUTPUT_TYPE_TO_KWARG` mapping
+
+---
+
 ## Version 1.1.1 - February 2026
 
 ### MCP Server Changes (server v1.25.0)
@@ -8,9 +77,6 @@ The LOCI MCP server makes Claude software-execution aware by using the generated
 
 **New tools:**
 - **`get_assembly_block_exec_behavior`** — Provides execution behavior (time and energy consumption) for one or more assembly blocks. Accepts a CSV of `(function_name, assembly_code)` and a target architecture, returns predicted `execution_time_ns`, `std_dev_ns`, and `energy_ws` (estimated energy in Watt-seconds/Joules derived from an architecture-dependent energy constant). Useful for comparing performance between code versions, identifying high-cost functions, and getting hardware-aware estimations without running on real hardware. Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.
-- **`get_assembly_block_exec_behavior_per_function`** — Predict execution time for a single function by name, assembly code, and target architecture.
-
-
 
 ### Bug Fixes
 
