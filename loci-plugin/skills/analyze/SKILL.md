@@ -1,5 +1,4 @@
 ---
-name: analyze
 description: Analyze function  based on compiled assembly code to provide execution insights
 disable-model-invocation: true
 ---

@@ -1,5 +1,4 @@
 ---
-name: exec-behavior
 description: Batch analysis of execution behavior (timing, deviation, energy) for one or more compiled functions
 disable-model-invocation: true
 ---
