@@ -71,7 +71,6 @@ install_slicer() {
   [ -x "${VENV_DIR}/bin/pip" ] || return 1
 
   "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
-  "${VENV_DIR}/bin/pip" install --quiet "mcp>=1.0.0" >> "$SLICER_LOG" 2>&1 || return 1
   "${VENV_DIR}/bin/pip" install --force-reinstall "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
 
   # The wheel may have undeclared dependencies — detect and install them
@@ -165,17 +164,18 @@ else
   echo -e "  ${GREEN}Created${NC}"
 fi
 
-# 7b. Add loci-slicer to .mcp.json if slicer is available
+# 7b. Detect venv Python path (cross-platform) for slicer CLI
+LOCI_SLICER_CMD=""
 if [ "$SLICER_AVAILABLE" = true ]; then
-  echo -n "Adding loci-slicer to .mcp.json... "
-  if jq --arg py "${VENV_DIR}/bin/python" --arg srv "${PLUGIN_DIR}/lib/slicer_mcp_server.py" \
-    '.mcpServers["loci-slicer"] = {"command": $py, "args": [$srv], "env": {"PYTHONUNBUFFERED": "1"}}' \
-    "${PROJECT_ROOT}/.mcp.json" > "${PROJECT_ROOT}/.mcp.json.tmp" 2>/dev/null && \
-    mv "${PROJECT_ROOT}/.mcp.json.tmp" "${PROJECT_ROOT}/.mcp.json"; then
-    echo -e "${GREEN}OK${NC}"
+  if [ -x "${VENV_DIR}/bin/python" ]; then
+    VENV_PYTHON="${VENV_DIR}/bin/python"
+  elif [ -x "${VENV_DIR}/Scripts/python.exe" ]; then
+    VENV_PYTHON="${VENV_DIR}/Scripts/python.exe"
   else
-    echo -e "${YELLOW}FAILED — add loci-slicer manually${NC}"
-    rm -f "${PROJECT_ROOT}/.mcp.json.tmp"
+    VENV_PYTHON=""
+  fi
+  if [ -n "$VENV_PYTHON" ]; then
+    LOCI_SLICER_CMD="${VENV_PYTHON} ${PLUGIN_DIR}/lib/slicer_cli.py"
   fi
 fi
 
@@ -224,7 +224,11 @@ CMD_COUNT=0
 for skill_dir in "${PLUGIN_DIR}/skills"/*/; do
   if [ -f "${skill_dir}SKILL.md" ]; then
     skill_name=$(basename "$skill_dir")
-    cp "${skill_dir}SKILL.md" "${COMMANDS_DIR}/${skill_name}.md"
+    if [ -n "$LOCI_SLICER_CMD" ]; then
+      sed "s|\${LOCI_SLICER}|${LOCI_SLICER_CMD}|g" "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+    else
+      sed 's|\${LOCI_SLICER}|# slicer unavailable|g' "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+    fi
     CMD_COUNT=$((CMD_COUNT + 1))
   fi
 done
@@ -247,7 +251,7 @@ echo "  - Monitor assembly file changes and binary diffs"
 echo "  - Stream context to LOCI MCP for execution-aware analysis"
 echo "  - Inject performance/regression warnings into Claude's context"
 if [ "$SLICER_AVAILABLE" = true ]; then
-echo "  - Analyze ELF binaries locally via loci-slicer (symbols, assembly, blocks, diff)"
+echo "  - Analyze ELF binaries locally via bundled slicer CLI (symbols, assembly, blocks, diff)"
 fi
 echo ""
 echo "Slash commands: /analyze, /slice"

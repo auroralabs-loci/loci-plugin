@@ -110,6 +110,19 @@ Two separate configs must stay consistent:
 - **`.mcp.json`** (project root) — Claude Code's MCP connection URL; created by `setup.sh`
 - **`loci-plugin/config/loci.json`** — Bridge settings; `mcp_server_name` must match the server name in `.mcp.json`
 
+### Slicer CLI
+
+`loci-plugin/lib/slicer_cli.py` is a local CLI tool for ELF binary analysis, called via Bash. It wraps the `asmslicer` library installed in the plugin's venv. The full command path is baked into skill files during `setup.sh`.
+
+```bash
+<slicer> slice-elf --elf-path PATH [--arch ARCH] [--output-types asm,symbols,...]
+<slicer> extract-assembly --elf-path PATH --functions func1,func2 [--arch ARCH]
+<slicer> extract-symbols --elf-path PATH [--arch ARCH]
+<slicer> diff-elfs --elf-path PATH --comparing-elf-path PATH [--arch ARCH]
+```
+
+Output is JSON to stdout. `extract-assembly` includes `timing_csv` and `timing_architecture` for direct handoff to the timing backend.
+
 ### MCP server tools
 
 Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.

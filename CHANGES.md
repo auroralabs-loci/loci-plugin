@@ -2,17 +2,26 @@
 
 ## Version 1.2.0 - February 2026
 
-### ASM Slicer — Local ELF Binary Analysis
+### ASM Slicer — Local ELF Binary Analysis (Bundled CLI)
 
-Added `loci-slicer`, a local stdio MCP server wrapping the `asmslicer` library. This enables Claude to inspect ELF binaries directly without manual `objdump` workflows.
+Added a local ELF binary slicer wrapping the `asmslicer` library as a bundled CLI tool (`slicer_cli.py`). Claude calls it via Bash — no extra MCP server to configure. One MCP server (`loci-plugin` for remote timing), one local CLI tool (the slicer).
 
-**New slicer tools (local, no network):**
-- **`slice_elf`** — Full binary analysis: pick any combination of asm, symbols, blocks, segments, callgraph, elfinfo
-- **`extract_assembly`** — Per-function disassembly formatted for the timing backend, with ready-to-use `timing_csv` and `timing_architecture`
-- **`extract_symbols`** — Symbol map: name, demangled name, address, size, namespace
-- **`diff_elfs`** — Binary diff: added/removed/modified symbols with similarity ratios
+**Slicer CLI subcommands:**
+```
+slicer_cli.py slice-elf --elf-path PATH [--arch ARCH] [--output-types asm,symbols,...]
+slicer_cli.py extract-assembly --elf-path PATH --functions func1,func2 [--arch ARCH]
+slicer_cli.py extract-symbols --elf-path PATH [--arch ARCH]
+slicer_cli.py diff-elfs --elf-path PATH --comparing-elf-path PATH [--arch ARCH]
+```
 
-**New file:** `loci-plugin/lib/slicer_mcp_server.py` (600+ lines)
+Output is JSON to stdout.
+
+- **`slice-elf`** — Full binary analysis: pick any combination of asm, symbols, blocks, segments, callgraph, elfinfo
+- **`extract-assembly`** — Per-function disassembly formatted for the timing backend, with ready-to-use `timing_csv` and `timing_architecture`
+- **`extract-symbols`** — Symbol map: name, demangled name, address, size, namespace
+- **`diff-elfs`** — Binary diff: added/removed/modified symbols with similarity ratios
+
+**New file:** `loci-plugin/lib/slicer_cli.py`
 
 ### Unified MCP Tool API
 
@@ -25,8 +34,9 @@ All references updated across CLAUDE.md, Readme.md, hooks, skills, and the regre
 ### Setup Overhaul (`setup.sh`)
 
 - **Slicer install with retry**: Refactored into `install_slicer()` function that detects and installs undeclared wheel dependencies automatically (up to 5 rounds), and rebuilds the venv from scratch on failure
+- **Cross-platform venv detection**: Detects `bin/python` (Linux/macOS) or `Scripts/python.exe` (Windows Git Bash/WSL) and builds `LOCI_SLICER_CMD` for skill templating
+- **Skill templating**: Slash command installation uses `sed` to replace `${LOCI_SLICER}` placeholder in skill files with the full venv Python + script path (no shell wrapper needed)
 - **Hook registration** (new step 8): Automatically registers hooks into `.claude/settings.json` with absolute paths resolved from `hooks.json`
-- **Slash command installation** (new step 9): Copies skill definitions to `.claude/commands/` so `/analyze` and `/slice` are available immediately
 - **LOCI context installation** (new step 10): Copies `CLAUDE.md` into `.claude/` for Claude context
 - **MCP type updated**: Changed from implicit SSE to explicit `"type": "http"` in `.mcp.json`
 - **Better error reporting**: Slicer setup failures now log to `state/slicer-setup.log` with the last error shown inline
@@ -55,7 +65,7 @@ All references updated across CLAUDE.md, Readme.md, hooks, skills, and the regre
 - **Removed** `loci-plugin/.mcp.json` — MCP config is now generated at the project root by `setup.sh`, not shipped inside the plugin
 - **Version**: `plugin.json` set to `1.2.0`
 - **Regression checker** (`hooks.json`): Updated agent prompt to call `get_assembly_block_exec_behavior` instead of `get_assembly_block_timings`
-- **Slicer API update** (`slicer_mcp_server.py`): Updated from dict-based `asmslicer.process(args)` to keyword-based `asmslicer.process(**kwargs)` with per-output-type file paths via `OUTPUT_TYPE_TO_KWARG` mapping
+- **Slicer API** (`slicer_cli.py`): Uses keyword-based `asmslicer.process(**kwargs)` with per-output-type file paths via `OUTPUT_TYPE_TO_KWARG` mapping
 
 ---
 

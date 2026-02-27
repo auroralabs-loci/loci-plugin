@@ -7,12 +7,12 @@ disable-model-invocation: true
 # LOCI Binary Slicer
 
 1. Identify the ELF binary from "$ARGUMENTS" or the most recently compiled binary in the project
-2. Call mcp__loci-slicer__extract_symbols to list available functions
-3. Call mcp__loci-slicer__slice_elf with the ELF path and requested output_types:
-   - For disassembly: output_types ["asm"]
-   - For full analysis: output_types ["asm", "symbols", "blocks", "segments", "callgraph", "elfinfo"]
+2. Run: `${LOCI_SLICER} extract-symbols --elf-path <binary>`
+3. Run: `${LOCI_SLICER} slice-elf --elf-path <binary> --output-types <types>`
+   - For disassembly: `--output-types asm`
+   - For full analysis: `--output-types asm,symbols,blocks,segments,callgraph,elfinfo`
    - For specific outputs: select from the list above
-4. For binary comparison (if two ELFs provided): call mcp__loci-slicer__diff_elfs with elf_path and comparing_elf_path
+4. For binary comparison (if two ELFs provided): `${LOCI_SLICER} diff-elfs --elf-path <base> --comparing-elf-path <changed>`
 5. Present the results organized by output type
 
-Architecture is auto-detected. Supported: aarch64 (cortex-a53), cortexm (cortex-m4), tricore (tc399).
+Architecture is auto-detected. Override with `--arch`. Supported: aarch64 (cortex-a53), cortexm (cortex-m4), tricore (tc399).

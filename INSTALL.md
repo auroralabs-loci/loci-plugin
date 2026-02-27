@@ -4,10 +4,10 @@ Add the LOCI plugin to a C++ project for execution-aware timing analysis and ELF
 
 ## What you get
 
-Two MCP servers working together:
+One MCP server + one bundled CLI tool:
 
 - **loci-plugin** (remote, SSE) — predicts execution time for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399)
-- **loci-slicer** (local, stdio) — parses ELF binaries to extract symbols, disassembly, basic blocks, callgraphs, and binary diffs
+- **slicer CLI** (local, bundled) — parses ELF binaries to extract symbols, disassembly, basic blocks, callgraphs, and binary diffs. Called via Bash like any other CLI tool.
 
 The slicer feeds assembly to the timing backend in exactly the right format. No more manual `objdump` + copy-paste.
 
@@ -56,7 +56,7 @@ Copy the wheel into the `slicer-wheels/` directory:
 cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/slicer-wheels/
 ```
 
-If you don't have the wheel, the plugin still works — you just won't have the slicer tools. The remote timing backend (loci-plugin) works independently.
+If you don't have the wheel, the plugin still works — you just won't have the slicer CLI. The remote timing backend (loci-plugin) works independently.
 
 ## 3. Run setup
 
@@ -68,9 +68,9 @@ This will:
 1. Check dependencies (jq, python3, compiler)
 2. If wheels are present: create a Python venv and install the slicer
 3. Detect your project (compiler, build system, sources, binaries)
-4. Create `.mcp.json` at the project root with MCP server entries
+4. Create `.mcp.json` at the project root with the MCP server entry
 5. Register hooks in `.claude/settings.json` (with absolute paths)
-6. Install slash commands (`/analyze`, `/slice`) into `.claude/commands/`
+6. Install slash commands (`/analyze`, `/slice`) into `.claude/commands/` with the slicer CLI path baked in
 
 Expected output (without wheel — slicer disabled, timing backend still works):
 
@@ -99,7 +99,7 @@ Installing slash commands... OK (2 commands: analyze, slice)
 Setup complete!
 ```
 
-If you have the wheel, the slicer line shows `OK` and an additional `Adding loci-slicer to .mcp.json... OK` appears.
+If you have the wheel, the slicer line shows `OK` and the slash commands are installed with the full slicer CLI path.
 
 ## 4. Verify what setup created
 
@@ -123,7 +123,12 @@ Check `.mcp.json`:
 cat .mcp.json | jq .
 ```
 
-You should see at least the `loci-plugin` SSE server. If the slicer wheel was installed, you'll also see `loci-slicer` with absolute paths to the venv Python and server script.
+You should see the `loci-plugin` SSE server entry.
+
+Verify the slicer CLI works:
+```bash
+.claude/plugins/loci-plugin/.venv/bin/python .claude/plugins/loci-plugin/lib/slicer_cli.py --help
+```
 
 ## 5. Launch Claude Code
 
@@ -132,7 +137,7 @@ claude
 ```
 
 Verify everything is connected:
-- `/mcp` — should list `loci-plugin` (and `loci-slicer` if the wheel was installed)
+- `/mcp` — should list `loci-plugin`
 - Type `/` and look for `analyze` and `slice` in the command list
 
 ---
@@ -172,7 +177,7 @@ The fastest path from source to timing prediction. Just tell Claude what functio
 
 Claude will:
 1. Compile `main.cpp` for the target architecture
-2. Call `mcp__loci-slicer__extract_assembly` on the binary to get `calculate`'s assembly
+2. Run the slicer CLI to extract `calculate`'s assembly
 3. Pass the assembly to `mcp__loci-plugin__get_assembly_block_exec_behavior`
 4. Report the predicted execution time in microseconds with standard deviation
 
@@ -190,7 +195,7 @@ Use the `/slice` skill to inspect a binary without running timing analysis:
 > /slice main
 ```
 
-Claude will call the slicer to list symbols, show disassembly, and present the structure of the binary. You can ask for specific outputs:
+Claude will call the slicer CLI to list symbols, show disassembly, and present the structure of the binary. You can ask for specific outputs:
 
 ```
 > /slice main — show me the callgraph and basic blocks
@@ -198,18 +203,15 @@ Claude will call the slicer to list symbols, show disassembly, and present the s
 
 ### Scenario 3: Extract assembly for specific functions
 
-Call the slicer tool directly when you need precise control:
+Ask Claude to run the slicer directly when you need precise control:
 
 ```
-> Use extract_assembly to get the assembly for calculate and main from ./main
+> Use the slicer to extract assembly for calculate and main from ./main
 ```
 
-Claude calls `mcp__loci-slicer__extract_assembly` with:
-```json
-{
-  "elf_path": "./main",
-  "functions": ["calculate", "main"]
-}
+Claude runs the slicer CLI with:
+```bash
+<slicer> extract-assembly --elf-path ./main --functions calculate,main
 ```
 
 The response includes:
@@ -226,7 +228,7 @@ After making changes and recompiling, diff the old and new binaries:
 > Diff ./main_v1 against ./main_v2 to see what changed
 ```
 
-Claude calls `mcp__loci-slicer__diff_elfs` and shows you which symbols were added, removed, or modified, with similarity ratios for modified functions.
+Claude runs the slicer CLI to diff and shows you which symbols were added, removed, or modified, with similarity ratios for modified functions.
 
 ### Scenario 5: Full pipeline — optimize and measure
 
@@ -253,7 +255,7 @@ You can point the slicer at any ELF, not just binaries you compiled:
 > What functions are in /path/to/firmware.elf?
 ```
 
-Claude calls `mcp__loci-slicer__extract_symbols` and returns the full symbol table with names, demangled names, addresses, and sizes.
+Claude runs the slicer CLI to extract the full symbol table with names, demangled names, addresses, and sizes.
 
 ---
 
@@ -267,16 +269,16 @@ The slicer auto-detects architecture from the ELF binary. You can also specify i
 | `cortexm`   | `cortex-m4`        | `-mcpu=cortex-m4`     |
 | `tricore`   | `tc399`            | `-mcpu=tc39xx`        |
 
-When you use `extract_assembly`, the response includes `timing_architecture` already mapped to the timing backend name, so the handoff is seamless.
+When you use `extract-assembly`, the response includes `timing_architecture` already mapped to the timing backend name, so the handoff is seamless.
 
-## Available slicer tools
+## Available slicer commands
 
-| Tool | What it does |
-|------|-------------|
-| `slice_elf` | Full analysis — pick any combination of: asm, symbols, blocks, segments, callgraph, elfinfo |
-| `extract_assembly` | Per-function assembly formatted for the timing backend, with ready-to-use `timing_csv` |
-| `extract_symbols` | Symbol map: name, demangled name, address, size, namespace |
-| `diff_elfs` | Binary diff: added/removed/modified symbols with similarity ratios |
+| Command | What it does |
+|---------|-------------|
+| `slice-elf` | Full analysis — pick any combination of: asm, symbols, blocks, segments, callgraph, elfinfo |
+| `extract-assembly` | Per-function assembly formatted for the timing backend, with ready-to-use `timing_csv` |
+| `extract-symbols` | Symbol map: name, demangled name, address, size, namespace |
+| `diff-elfs` | Binary diff: added/removed/modified symbols with similarity ratios |
 
 ## Troubleshooting
 
@@ -312,7 +314,10 @@ sudo apt install python3-venv  # Ubuntu/Debian
 .claude/plugins/loci-plugin/.venv/bin/python -c "from loci.service.asmslicer import asmslicer; print('OK')"
 ```
 
-**Slicer tools don't appear in Claude Code** — Check that `.mcp.json` at the project root has the `loci-slicer` entry with correct absolute paths. Restart Claude Code after any `.mcp.json` changes.
+**Slicer CLI not working** — Verify the CLI is accessible:
+```bash
+.claude/plugins/loci-plugin/.venv/bin/python .claude/plugins/loci-plugin/lib/slicer_cli.py --help
+```
 
 **"ELF file not found"** — The slicer needs an absolute path or a path relative to Claude Code's working directory. Use the full path when in doubt.
 

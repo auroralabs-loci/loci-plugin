@@ -68,17 +68,6 @@
             "async": true
           }
         ]
-      },
-      {
-        "matcher": "mcp__loci-slicer__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/capture-action.sh",
-            "timeout": 3,
-            "async": true
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -95,17 +84,6 @@
       },
       {
         "matcher": "mcp__loci-plugin__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/capture-action.sh",
-            "timeout": 5,
-            "async": true
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__loci-slicer__.*",
         "hooks": [
           {
             "type": "command",

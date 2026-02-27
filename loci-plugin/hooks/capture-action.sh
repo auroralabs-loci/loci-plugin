@@ -116,6 +116,9 @@ classify_action() {
       # Diff on asm/binary files
       elif echo "$cmd" | grep -qiE 'diff.*\.(asm|s|o|bin)'; then
         echo "binary_diff"
+      # LOCI slicer CLI
+      elif echo "$cmd" | grep -qiE 'slicer_cli\.py'; then
+        echo "loci_slicer_tool"
       # Package management
       elif echo "$cmd" | grep -qiE '(conan|vcpkg|apt|brew)\s+install'; then
         echo "dependency_install"
@@ -167,9 +170,7 @@ classify_action() {
       echo "agent_delegation"
       ;;
     *)
-      if echo "$tool" | grep -q "^mcp__loci-slicer__"; then
-        echo "loci_slicer_tool"
-      elif echo "$tool" | grep -q "^mcp__loci-plugin__"; then
+      if echo "$tool" | grep -q "^mcp__loci-plugin__"; then
         echo "loci_mcp_tool"
       elif echo "$tool" | grep -q "^mcp__"; then
         echo "mcp_tool_call"
