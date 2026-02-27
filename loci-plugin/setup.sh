@@ -255,7 +255,7 @@ if [ "$SLICER_AVAILABLE" = true ]; then
 echo "  - Analyze ELF binaries locally via bundled slicer CLI (symbols, assembly, blocks, diff)"
 fi
 echo ""
-echo "Slash commands: /analyze, /slice"
+echo "Slash commands: /analyze, /slice, /profile-blocks"
 echo ""
 echo "Restart Claude Code to activate."
 echo ""
