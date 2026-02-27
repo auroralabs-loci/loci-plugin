@@ -4,7 +4,7 @@
 # Classifies actions for LOCI binary-level execution-aware analysis.
 # Receives JSON on stdin from Claude Code hook system.
 
-set -euo pipefail
+set +e
 
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${PLUGIN_DIR}/state"
@@ -230,7 +230,7 @@ if [ -z "$COMPILER_FLAGS" ] || ! echo "$COMPILER_FLAGS" | jq empty 2>/dev/null; 
 fi
 
 # Enrich the action record with C++ classification
-ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
+if ! ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
   --arg action_type "$ACTION_TYPE" \
   --argjson files "$FILES_INVOLVED" \
   --argjson compiler_flags "$COMPILER_FLAGS" \
@@ -244,7 +244,10 @@ ENRICHED_RECORD=$(echo "$ACTION_RECORD" | jq \
       output_binary: $output_binary,
       optimization_level: $optimization_level
     }
-  }')
+  }' 2>/dev/null); then
+    log_error "Failed to enrich record (action_type=$ACTION_TYPE files=$FILES_INVOLVED compiler_flags=$COMPILER_FLAGS)"
+    ENRICHED_RECORD="$ACTION_RECORD"
+fi
 
 # Write to action log with error handling
 if ! echo "$ENRICHED_RECORD" >> "$LOG_FILE" 2>/dev/null; then

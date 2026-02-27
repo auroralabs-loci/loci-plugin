@@ -255,7 +255,8 @@ def slice_elf(elf_path: str, architecture: str | None = None,
 
 
 def extract_assembly(elf_path: str, functions: list[str],
-                     architecture: str | None = None) -> dict:
+                     architecture: str | None = None,
+                     blocks_file: str | None = None) -> dict:
     arch = resolve_arch(architecture)
     result = run_slicer(elf_path, arch)
     detected_arch = result["arch"]
@@ -306,6 +307,11 @@ def extract_assembly(elf_path: str, functions: list[str],
         if not found:
             matched[query] = {"error": f"Function '{query}' not found in ELF"}
 
+    # Write blocks CSV to file if requested
+    blocks_text = files.get("blocks", "")
+    if blocks_file and blocks_text:
+        Path(blocks_file).write_text(blocks_text)
+
     # Build output
     functions_out = {}
     csv_rows = []
@@ -336,12 +342,16 @@ def extract_assembly(elf_path: str, functions: list[str],
         writer.writerow([fname, asm])
     timing_csv = csv_buf.getvalue()
 
-    return {
+    output = {
         "architecture": detected_arch,
         "timing_architecture": timing_arch(detected_arch) if detected_arch else None,
         "functions": functions_out,
         "timing_csv": timing_csv,
     }
+    if blocks_file and blocks_text:
+        output["blocks_file"] = blocks_file
+
+    return output
 
 
 def extract_symbols(elf_path: str, architecture: str | None = None) -> dict:
@@ -450,6 +460,8 @@ def main():
     p_extract.add_argument("--functions", required=True,
                            help="Comma-separated function names to extract")
     p_extract.add_argument("--arch", default=None, help="Target architecture (auto-detected if omitted)")
+    p_extract.add_argument("--blocks", default=None, metavar="FILE",
+                           help="Write basic blocks CSV to this file")
 
     # extract-symbols
     p_symbols = subparsers.add_parser(
@@ -485,6 +497,7 @@ def main():
                 elf_path=args.elf_path,
                 functions=functions,
                 architecture=args.arch,
+                blocks_file=args.blocks,
             )
         elif args.command == "extract-symbols":
             result = extract_symbols(

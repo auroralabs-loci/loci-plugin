@@ -72,6 +72,7 @@ install_slicer() {
 
   "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
   "${VENV_DIR}/bin/pip" install --force-reinstall "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
+  "${VENV_DIR}/bin/pip" install --quiet unicorn >> "$SLICER_LOG" 2>&1 || true
 
   # The wheel may have undeclared dependencies — detect and install them
   for _attempt in 1 2 3 4 5; do
