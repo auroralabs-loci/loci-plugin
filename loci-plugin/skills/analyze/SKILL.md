@@ -5,6 +5,12 @@ disable-model-invocation: true
 
 # LOCI Timing Analysis
 
+the LOCI_SLICER is in lib/slicer_cli.py 
+
+you need run it from with in the .venv that is in the loci-plugin root directory
+
+
+
 1. Cross-compile the target file for aarch64:
    ```
    aarch64-linux-gnu-g++ -O2 -march=armv8-a -o <binary> <source>
