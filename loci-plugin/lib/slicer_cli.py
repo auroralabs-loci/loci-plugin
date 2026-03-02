@@ -512,7 +512,7 @@ def main():
         help="Per-function assembly in timing-backend-ready format",
     )
     p_extract.add_argument("--elf-path", required=True, help="Path to the ELF binary")
-    p_extract.add_argument("--functions", required=True,
+    p_extract.add_argument("--functions", required=False,
                            help="Comma-separated function names to extract")
     p_extract.add_argument("--arch", default=None, help="Target architecture (auto-detected if omitted)")
     p_extract.add_argument("--blocks", default=None, metavar="FILE",
