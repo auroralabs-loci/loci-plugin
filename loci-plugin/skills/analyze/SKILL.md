@@ -5,9 +5,17 @@ disable-model-invocation: true
 
 # LOCI Timing Analysis
 
-the LOCI_SLICER is in lib/slicer_cli.py 
+the LOCI_SLICER is in lib/slicer_cli.py
 
-you need run it from with in the .venv that is in the loci-plugin root directory
+you need to run it from within the .venv that is in the loci-plugin root directory
+
+For example, to extract assembly for a function called `apply_filter` from `filter.elf`:
+```
+loci-plugin/.venv/bin/python3 loci-plugin/lib/slicer_cli.py extract-assembly \
+  --elf-path filter.elf \
+  --functions apply_filter
+```
+The output is JSON. Use the `timing_csv` and `timing_architecture` fields from it in step 3.
 
 
 
