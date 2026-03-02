@@ -64,14 +64,21 @@ SLICER_LOG="${PLUGIN_DIR}/state/slicer-setup.log"
 install_slicer() {
   : > "$SLICER_LOG"
 
+  # Neutralize any globally-configured private package registries (e.g. GCP Artifact Registry)
+  # that would block waiting for credentials. All deps come from the local wheel or PyPI.
+  export PIP_EXTRA_INDEX_URL=""
+  export PIP_INDEX_URL="https://pypi.org/simple/"
+
   if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR" >> "$SLICER_LOG" 2>&1 || return 1
   fi
 
   [ -x "${VENV_DIR}/bin/pip" ] || return 1
 
-  "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
-  "${VENV_DIR}/bin/pip" install --force-reinstall "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
+  # Only upgrade pip if it's very old (avoids a PyPI round-trip every run)
+  PIP_VER=$("${VENV_DIR}/bin/pip" --version 2>/dev/null | awk '{print $2}' | cut -d. -f1)
+  [ "${PIP_VER:-0}" -lt 23 ] && "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
+  "${VENV_DIR}/bin/pip" install "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
   "${VENV_DIR}/bin/pip" install --quiet unicorn >> "$SLICER_LOG" 2>&1 || true
 
   # The wheel may have undeclared dependencies — detect and install them
@@ -90,9 +97,16 @@ install_slicer() {
   "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$SLICER_LOG" || return 1
 }
 
-echo -n "Setting up slicer environment (2 min aprox)... "
+echo -n "Setting up slicer environment... "
 if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
-  if ! install_slicer; then
+  # Fast-path: skip install if venv already works for current wheel
+  WHEEL_HASH=$(md5 -q "${WHEEL_DIR}"/*.whl 2>/dev/null || md5sum "${WHEEL_DIR}"/*.whl 2>/dev/null | awk '{print $1}')
+  MARKER_FILE="${VENV_DIR}/.loci-wheel-hash"
+  if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$WHEEL_HASH" ] \
+      && "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
+    SLICER_AVAILABLE=true
+    echo -e "${GREEN}OK (cached)${NC}"
+  elif ! install_slicer; then
     # Stale or broken venv — nuke and retry once
     rm -rf "$VENV_DIR"
     if install_slicer; then
@@ -108,6 +122,7 @@ if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
     fi
   else
     SLICER_AVAILABLE=true
+    echo "$WHEEL_HASH" > "$MARKER_FILE"
     echo -e "${GREEN}OK${NC}"
   fi
 else
