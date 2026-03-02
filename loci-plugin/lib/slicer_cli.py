@@ -293,7 +293,7 @@ def slice_elf(elf_path: str, architecture: str | None = None,
     return output
 
 
-def extract_assembly(elf_path: str, functions: list[str],
+def extract_assembly(elf_path: str, functions: list[str] | None = None,
                      architecture: str | None = None,
                      blocks_file: str | None = None) -> dict:
     arch = resolve_arch(architecture)
@@ -318,33 +318,38 @@ def extract_assembly(elf_path: str, functions: list[str],
         if sym["long_name"]:
             sym_lookup[sym["long_name"]] = sym
 
-    # Match requested functions
-    matched = {}
-    for query in functions:
-        # Try direct match in asm functions first
-        if query in all_funcs:
-            matched[query] = all_funcs[query]
-            continue
+    # Match requested functions (or all functions if no filter specified)
+    if functions is None:
+        # No filter: extract all functions
+        matched = all_funcs.copy()
+    else:
+        # Filter by requested function names
+        matched = {}
+        for query in functions:
+            # Try direct match in asm functions first
+            if query in all_funcs:
+                matched[query] = all_funcs[query]
+                continue
 
-        # Try matching via symbol names
-        found = False
-        for asm_name, asm_data in all_funcs.items():
-            # Check against symbol lookup
-            sym = sym_lookup.get(asm_name, {})
-            sym_name = sym.get("name", asm_name) if sym else asm_name
-            sym_long = sym.get("long_name", "") if sym else ""
-            if match_function(query, sym_name, sym_long):
-                matched[query] = asm_data
-                found = True
-                break
-            # Also try direct asm_name match
-            if match_function(query, asm_name, asm_name):
-                matched[query] = asm_data
-                found = True
-                break
+            # Try matching via symbol names
+            found = False
+            for asm_name, asm_data in all_funcs.items():
+                # Check against symbol lookup
+                sym = sym_lookup.get(asm_name, {})
+                sym_name = sym.get("name", asm_name) if sym else asm_name
+                sym_long = sym.get("long_name", "") if sym else ""
+                if match_function(query, sym_name, sym_long):
+                    matched[query] = asm_data
+                    found = True
+                    break
+                # Also try direct asm_name match
+                if match_function(query, asm_name, asm_name):
+                    matched[query] = asm_data
+                    found = True
+                    break
 
-        if not found:
-            matched[query] = {"error": f"Function '{query}' not found in ELF"}
+            if not found:
+                matched[query] = {"error": f"Function '{query}' not found in ELF"}
 
     # Write blocks CSV to file if requested
     blocks_text = files.get("blocks", "")
@@ -513,7 +518,7 @@ def main():
     )
     p_extract.add_argument("--elf-path", required=True, help="Path to the ELF binary")
     p_extract.add_argument("--functions", required=False,
-                           help="Comma-separated function names to extract")
+                           help="Comma-separated function names to extract (omit to extract all functions)")
     p_extract.add_argument("--arch", default=None, help="Target architecture (auto-detected if omitted)")
     p_extract.add_argument("--blocks", default=None, metavar="FILE",
                            help="Write basic blocks CSV to this file")
@@ -563,10 +568,11 @@ def main():
                 filter_functions=args.filter_functions,
             )
         elif args.command == "extract-assembly":
-            functions = [f.strip() for f in args.functions.split(",")]
+            funcs = ([f.strip() for f in args.functions.split(",")]
+                     if args.functions else None)
             result = extract_assembly(
                 elf_path=args.elf_path,
-                functions=functions,
+                functions=funcs,
                 architecture=args.arch,
                 blocks_file=args.blocks,
             )
