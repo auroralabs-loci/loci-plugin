@@ -90,7 +90,7 @@ install_slicer() {
   "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$SLICER_LOG" || return 1
 }
 
-echo -n "Setting up slicer environment... "
+echo -n "Setting up slicer environment (2 min aprox)... "
 if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
   if ! install_slicer; then
     # Stale or broken venv — nuke and retry once
