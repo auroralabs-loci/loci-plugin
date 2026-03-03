@@ -9,7 +9,16 @@ disable-model-invocation: true
 
 - Identify the source file that was just modified and the compile command from session context
   (`loci-plugin/state/loci-context.json` → compilation_history / last compile action)
-- Recompile the ELF targeting ARM Cortex-M4:
+
+**Incremental sub-path (preferred):** If a `.o` for this source already exists in `.loci-build/cortex-m4/`:
+  1. Save it as `.o.prev`
+  2. Recompile only the changed translation unit with `-c`:
+     ```
+     arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -O2 <flags> -c <source> -o .loci-build/cortex-m4/<basename>.o
+     ```
+  3. Continue to step 2 using `.o.prev` and the new `.o`
+
+**Full path:** Recompile the full ELF targeting ARM Cortex-M4:
   ```
   arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -O2 <flags> -o <binary> <source>
   ```

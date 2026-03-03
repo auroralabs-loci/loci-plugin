@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # LOCI Binary Slicer
 
-1. Identify the ELF binary from "$ARGUMENTS" or the most recently compiled binary in the project
+1. Identify the ELF binary from "$ARGUMENTS" or the most recently compiled binary in the project. The slicer also supports `.o` object files for per-translation-unit analysis.
 2. Run: `${LOCI_SLICER} extract-symbols --elf-path <binary>`
 3. Run: `${LOCI_SLICER} slice-elf --elf-path <binary> --output-types <types>`
    - For disassembly: `--output-types asm`

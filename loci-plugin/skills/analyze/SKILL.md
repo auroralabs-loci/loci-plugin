@@ -17,7 +17,28 @@ loci-plugin/.venv/bin/python3 loci-plugin/lib/slicer_cli.py extract-assembly \
 ```
 The output is JSON. Use the `timing_csv` and `timing_architecture` fields from it in step 3.
 
+## Incremental Path (preferred)
 
+If a previous `.o` exists in `.loci-build/cortex-a53/`, use incremental compilation:
+
+1. Save the existing `.o` as `.o.prev`
+2. Compile only the changed source with `-c`:
+   ```
+   aarch64-linux-gnu-g++ -O2 -march=armv8-a -c <source> -o .loci-build/cortex-a53/<basename>.o
+   ```
+3. Diff `.o.prev` vs `.o` to find changed functions:
+   ```
+   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch cortex-a53
+   ```
+4. Extract assembly for only `modified`/`added` functions:
+   ```
+   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch cortex-a53
+   ```
+5. Skip to step 3 (MCP call) below.
+
+If no `.o` exists yet, fall through to full compilation.
+
+## Full Compilation Path
 
 1. Cross-compile the target file for aarch64:
    ```

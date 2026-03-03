@@ -7,6 +7,28 @@ disable-model-invocation: true
 
 Analyze one or more functions from a compiled binary. "$ARGUMENTS" contains the target file path and optionally a comma-separated list of function names to analyze (e.g., `/exec-behavior src/dsp.cpp process_sample,apply_filter`). If no functions are listed, analyze all non-trivial functions in the binary.
 
+## Step 0: Incremental Path (preferred)
+
+If a previous `.o` exists in `.loci-build/cortex-a53/`, use incremental compilation to analyze only changed functions:
+
+1. **Save the previous `.o`** (if it exists) as `.o.prev`
+2. **Compile only the relevant source** to `.o` with `-c`:
+   ```
+   aarch64-linux-gnu-g++ -O2 -march=armv8-a -c <source> -o .loci-build/cortex-a53/<basename>.o
+   ```
+3. **Diff** `.o.prev` vs `.o` to find changed functions:
+   ```
+   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch cortex-a53
+   ```
+   Only `modified` and `added` functions need analysis.
+4. **Extract assembly** for changed functions only:
+   ```
+   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch cortex-a53
+   ```
+5. Skip to **Step 3** (MCP call) below.
+
+If no `.o` exists yet, fall through to full compilation in Step 1.
+
 ## Steps
 
 1. **Cross-compile** the target file for aarch64:
