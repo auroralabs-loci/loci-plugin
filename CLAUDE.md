@@ -125,7 +125,7 @@ Output is JSON to stdout. `extract-assembly` includes `timing_csv` and `timing_a
 
 ### MCP server tools
 
-Supported architectures: `cortex-a53`, `cortex-m4`, `tc399`.
+Supported architectures: `aarch64`, `cortexm`, `tricore`.
 
 - `mcp__loci-plugin__get_assembly_block_exec_behavior` — Accepts a CSV of `(function_name, assembly_code)` and a target architecture, returns predicted `execution_time_ns`, `std_dev_ns`, and `energy_ws` per function. `energy_ws` is estimated energy in Watt-seconds (Joules), derived from execution_time_ns and an architecture-dependent energy constant (nanojoules per nanosecond).
 

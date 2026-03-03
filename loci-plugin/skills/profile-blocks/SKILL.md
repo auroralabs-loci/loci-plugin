@@ -10,11 +10,11 @@ disable-model-invocation: true
 - Identify the source file that was just modified and the compile command from session context
   (`loci-plugin/state/loci-context.json` → compilation_history / last compile action)
 
-**Incremental sub-path (preferred):** If a `.o` for this source already exists in `.loci-build/cortex-m4/`:
+**Incremental sub-path (preferred):** If a `.o` for this source already exists in `.loci-build/cortexm/`:
   1. Save it as `.o.prev`
   2. Recompile only the changed translation unit with `-c`:
      ```
-     arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -O2 <flags> -c <source> -o .loci-build/cortex-m4/<basename>.o
+     arm-none-eabi-g++ -mcpu=cortex-m4 -mthumb -O2 <flags> -c <source> -o .loci-build/cortexm/<basename>.o
      ```
   3. Continue to step 2 using `.o.prev` and the new `.o`
 
@@ -30,7 +30,7 @@ disable-model-invocation: true
 
 - If a previous ELF exists (`<binary>.prev`), run:
   ```
-  ${LOCI_SLICER} diff-elfs --elf-path <binary>.prev --comparing-elf-path <binary> --arch cortex-m4
+  ${LOCI_SLICER} diff-elfs --elf-path <binary>.prev --comparing-elf-path <binary> --arch cortexm
   ```
 - From the diff output, collect all function names with status `modified` or `added`
 - If no previous ELF exists, use `$ARGUMENTS` or the function(s) in the edited source file
@@ -39,7 +39,7 @@ disable-model-invocation: true
 
 - Run:
   ```
-  ${LOCI_SLICER} slice-elf --elf-path <binary> --output-types blocks,asm --arch cortex-m4
+  ${LOCI_SLICER} slice-elf --elf-path <binary> --output-types blocks,asm --arch cortexm
   ```
 - From the `blocks` CSV output, filter rows belonging to the changed functions
 - From the `asm` output, get per-function assembly for reference
@@ -63,7 +63,7 @@ disable-model-invocation: true
 
 - Call `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
   - **csv_text**: the block-level CSV from step 4
-  - **architecture**: `cortex-m4`
+  - **architecture**: the `timing_architecture` value from the slicer output (e.g., `cortexm`)
 
 ## 6. ANALYZE RESULTS — HAPPY PATH SELF-TIME
 
@@ -86,7 +86,7 @@ disable-model-invocation: true
 ## 7. STORE BASELINE
 
 - Read existing baselines from `loci-plugin/state/loci-baselines.json`
-- Write entry with key format: `<binary_path>::<function_name>::cortex-m4::blocks`
+- Write entry with key format: `<binary_path>::<function_name>::cortexm::blocks`
 - Value:
   ```json
   {
@@ -97,7 +97,7 @@ disable-model-invocation: true
     "energy_ws": <number>,
     "block_count": <number>,
     "happy_path_blocks": <number>,
-    "architecture": "cortex-m4",
+    "architecture": "cortexm",
     "timestamp": "<ISO 8601>"
   }
   ```

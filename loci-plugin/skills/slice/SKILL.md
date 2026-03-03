@@ -15,4 +15,4 @@ disable-model-invocation: true
 4. For binary comparison (if two ELFs provided): `${LOCI_SLICER} diff-elfs --elf-path <base> --comparing-elf-path <changed>`
 5. Present the results organized by output type
 
-Architecture is auto-detected. Override with `--arch`. Supported: aarch64 (cortex-a53), cortexm (cortex-m4), tricore (tc399).
+Architecture is auto-detected. Override with `--arch`. Supported: `aarch64`, `cortexm`, `tricore`.

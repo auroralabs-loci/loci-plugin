@@ -29,9 +29,9 @@ from pathlib import Path
 # Architecture mapping between slicer and timing backend
 # ---------------------------------------------------------------------------
 SLICER_TO_TIMING = {
-    "aarch64": "cortex-a53",
-    "cortexm": "cortex-m4",
-    "tricore": "tc399",
+    "aarch64": "aarch64",
+    "cortexm": "cortexm",
+    "tricore": "tricore",
 }
 TIMING_TO_SLICER = {v: k for k, v in SLICER_TO_TIMING.items()}
 

@@ -9,21 +9,21 @@ Analyze one or more functions from a compiled binary. "$ARGUMENTS" contains the 
 
 ## Step 0: Incremental Path (preferred)
 
-If a previous `.o` exists in `.loci-build/cortex-a53/`, use incremental compilation to analyze only changed functions:
+If a previous `.o` exists in `.loci-build/aarch64/`, use incremental compilation to analyze only changed functions:
 
 1. **Save the previous `.o`** (if it exists) as `.o.prev`
 2. **Compile only the relevant source** to `.o` with `-c`:
    ```
-   aarch64-linux-gnu-g++ -O2 -march=armv8-a -c <source> -o .loci-build/cortex-a53/<basename>.o
+   aarch64-linux-gnu-g++ -O2 -march=armv8-a -c <source> -o .loci-build/aarch64/<basename>.o
    ```
 3. **Diff** `.o.prev` vs `.o` to find changed functions:
    ```
-   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch cortex-a53
+   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
    ```
    Only `modified` and `added` functions need analysis.
 4. **Extract assembly** for changed functions only:
    ```
-   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch cortex-a53
+   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
    ```
 5. Skip to **Step 3** (MCP call) below.
 
@@ -55,7 +55,7 @@ If no `.o` exists yet, fall through to full compilation in Step 1.
    ```
    Parameters:
    - `csv_text`: the `timing_csv` value from step 2's JSON output (or stdout from `blocks-to-timing`)
-   - `architecture`: `cortex-a53`
+   - `architecture`: the `timing_architecture` value from step 2's JSON output
 
 4. **Report results** in a table:
 
