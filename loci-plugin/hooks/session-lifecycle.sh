@@ -56,7 +56,7 @@ case "$HOOK_EVENT" in
     # Start the LOCI bridge if not running
     BRIDGE_PID_FILE="${STATE_DIR}/bridge.pid"
     if [ ! -f "$BRIDGE_PID_FILE" ] || ! kill -0 "$(cat "$BRIDGE_PID_FILE")" 2>/dev/null; then
-      python3 "${PLUGIN_DIR}/lib/loci_bridge.py" --state-dir "$STATE_DIR" --session "$SESSION_ID" &
+      python3 "${PLUGIN_DIR}/lib/loci_bridge.py" --state-dir "$STATE_DIR" --session "$SESSION_ID" </dev/null >/dev/null 2>&1 &
       echo $! > "$BRIDGE_PID_FILE"
     fi
 
