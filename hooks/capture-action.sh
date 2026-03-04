@@ -116,9 +116,9 @@ classify_action() {
       # Diff on asm/binary files
       elif echo "$cmd" | grep -qiE 'diff.*\.(asm|s|o|bin)'; then
         echo "binary_diff"
-      # LOCI slicer CLI
-      elif echo "$cmd" | grep -qiE 'slicer_cli\.py'; then
-        echo "loci_slicer_tool"
+      # LOCI asm-analyze CLI
+      elif echo "$cmd" | grep -qiE 'asm_analyze\.py'; then
+        echo "loci_asm_analyze_tool"
       # Package management
       elif echo "$cmd" | grep -qiE '(conan|vcpkg|apt|brew)\s+install'; then
         echo "dependency_install"
@@ -296,7 +296,7 @@ fi
 # For PostToolUse: queue binary-producing actions for LOCI deep analysis
 if [ "$HOOK_EVENT" = "PostToolUse" ]; then
   case "$ACTION_TYPE" in
-    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff|loci_slicer_tool)
+    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff|loci_asm_analyze_tool)
       ANALYSIS_QUEUE="${STATE_DIR}/analysis-queue"
       if mkdir -p "$ANALYSIS_QUEUE" 2>/dev/null; then
         if ! echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json" 2>/dev/null; then

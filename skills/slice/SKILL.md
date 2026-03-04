@@ -4,15 +4,15 @@ description: Analyze ELF binary structure — symbols, assembly, basic blocks, c
 disable-model-invocation: true
 ---
 
-# LOCI Binary Slicer
+# LOCI Binary Analysis
 
-1. Identify the ELF binary from "$ARGUMENTS" or the most recently compiled binary in the project. The slicer also supports `.o` object files for per-translation-unit analysis.
-2. Run: `${LOCI_SLICER} extract-symbols --elf-path <binary>`
-3. Run: `${LOCI_SLICER} slice-elf --elf-path <binary> --output-types <types>`
+1. Identify the ELF binary from "$ARGUMENTS" or the most recently compiled binary in the project. asm-analyze also supports `.o` object files for per-translation-unit analysis.
+2. Run: `${LOCI_ASM_ANALYZE} extract-symbols --elf-path <binary>`
+3. Run: `${LOCI_ASM_ANALYZE} slice-elf --elf-path <binary> --output-types <types>`
    - For disassembly: `--output-types asm`
    - For full analysis: `--output-types asm,symbols,blocks,segments,callgraph,elfinfo`
    - For specific outputs: select from the list above
-4. For binary comparison (if two ELFs provided): `${LOCI_SLICER} diff-elfs --elf-path <base> --comparing-elf-path <changed>`
+4. For binary comparison (if two ELFs provided): `${LOCI_ASM_ANALYZE} diff-elfs --elf-path <base> --comparing-elf-path <changed>`
 5. Present the results organized by output type
 
 Architecture is auto-detected. Override with `--arch`. Supported: `aarch64`, `cortexm`, `tricore`.
