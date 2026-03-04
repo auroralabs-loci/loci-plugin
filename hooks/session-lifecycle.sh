@@ -66,7 +66,7 @@ case "$HOOK_EVENT" in
       ARCH_INFO=$(echo "$DETECTED_CONTEXT" | jq -r '"Target: \(.architecture // "unknown"), Compiler: \(.compiler // "unknown"), Build: \(.build_system // "unknown")"' 2>/dev/null || echo "")
     fi
 
-    LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/slicer_cli.py"
+    LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
 
     # Provide execution-aware context to Claude
     cat <<LOCI_CONTEXT
