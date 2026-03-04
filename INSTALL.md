@@ -4,7 +4,7 @@
 
 The LOCI plugin adds execution-aware C++ analysis to Claude Code. It has two sides:
 
-- **Local side** — hooks, a background daemon, and a bundled ELF slicer CLI that run entirely on your machine.
+- **Local side** — hooks, a background daemon, and a bundled ELF asm-analyze CLI that run entirely on your machine.
 - **Remote side** — an MCP server (SSE) that predicts execution time, standard deviation, and energy consumption for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399).
 
 Running `setup.sh` wires these together into your project in one step.
@@ -37,12 +37,12 @@ A Python 3.12 venv is created and the following packages are installed from `loc
 | Package | Source | Purpose |
 |---------|--------|---------|
 | `loci_service_asmslicer` | bundled `.whl` | Core ELF analysis library (assembly extraction, symbol maps, binary diffs, timing CSV output) |
-| `unicorn` | PyPI | CPU emulation engine used internally by the slicer |
+| `unicorn` | PyPI | CPU emulation engine used internally by asmslicer |
 | *(undeclared deps)* | PyPI | Detected by import probing and installed automatically |
 
 The venv is hash-checked against the bundled wheel on every `setup.sh` run — if the wheel hasn't changed the venv is reused as-is.
 
-If no `.whl` is found in `slicer-wheels/`, the venv step is skipped. The remote timing backend still works without the slicer.
+If no `.whl` is found in `slicer-wheels/`, the venv step is skipped. The remote timing backend still works without asm-analyze.
 
 ### 3. State directories — `loci-plugin/state/`
 
@@ -82,7 +82,7 @@ Hooks are merged into (or written to) `<project-root>/.claude/settings.json` wit
 
 ### 5. Slash commands — `.claude/commands/`
 
-Installed from `loci-plugin/skills/*/SKILL.md` with the slicer CLI path substituted in at install time:
+Installed from `loci-plugin/skills/*/SKILL.md` with the asm-analyze CLI path substituted in at install time:
 
 | Command | Purpose |
 |---------|---------|
@@ -122,10 +122,10 @@ Not installed as a system service. Started automatically at each `SessionStart` 
         └── profile-blocks.md      ← /loci/profile-blocks slash command
 
 loci-plugin/
-├── .venv/                         ← Python 3.12 venv (slicer + deps)
+├── .venv/                         ← Python 3.12 venv (asm-analyze + deps)
 ├── state/                         ← runtime state (queue, logs, baselines)
 ├── hooks/                         ← shell hook scripts called by Claude Code
-├── lib/                           ← bridge daemon, slicer CLI, utilities
+├── lib/                           ← bridge daemon, asm-analyze CLI, utilities
 ├── skills/                        ← slash command source templates
 ├── slicer-wheels/                 ← bundled asmslicer wheel
 └── config/loci.json               ← bridge configuration
@@ -156,7 +156,7 @@ Copy the provided `.whl` file into `slicer-wheels/`:
 cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/slicer-wheels/
 ```
 
-If you skip this, all slash commands and the timing backend still work — only local ELF analysis (assembly extraction, symbol maps, binary diffs) requires the slicer.
+If you skip this, all slash commands and the timing backend still work — only local ELF analysis (assembly extraction, symbol maps, binary diffs) requires asm-analyze.
 
 ### 3. Run setup
 
@@ -185,7 +185,7 @@ cat .mcp.json | jq .
 # Slash commands installed
 ls .claude/commands/
 
-# Slicer venv works
+# asm-analyze venv works
 .claude/plugins/loci-plugin/.venv/bin/python \
   -c "from loci.service.asmslicer import asmslicer; print('OK')"
 ```
@@ -198,7 +198,7 @@ Inside Claude Code:
 
 ## Troubleshooting
 
-**No `.mcp.json` created** — Re-run `setup.sh`. It should always complete all steps regardless of slicer wheel availability.
+**No `.mcp.json` created** — Re-run `setup.sh`. It should always complete all steps regardless of asmslicer wheel availability.
 
 **No MCP servers in `/mcp`** — Verify `.mcp.json` is at the project root (not inside `.claude/`):
 ```bash
@@ -216,7 +216,7 @@ Should show all five hook events.
 
 **"no wheels in slicer-wheels/"** — Drop the `.whl` file into `slicer-wheels/` and re-run setup.
 
-**Slicer venv creation failed** — Check the log:
+**asm-analyze venv creation failed** — Check the log:
 ```bash
 cat loci-plugin/state/slicer-setup.log
 ```
@@ -228,4 +228,4 @@ cat loci-plugin/state/hook-errors.log
 ps aux | grep loci_bridge.py
 ```
 
-**Timing backend unreachable** — The MCP server is remote (SSE). Check network access to the URL in `.mcp.json`. The slicer works entirely offline.
+**Timing backend unreachable** — The MCP server is remote (SSE). Check network access to the URL in `.mcp.json`. asm-analyze works entirely offline.

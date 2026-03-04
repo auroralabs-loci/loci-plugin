@@ -30,7 +30,7 @@ disable-model-invocation: true
 
 - If a previous ELF exists (`<binary>.prev`), run:
   ```
-  ${LOCI_SLICER} diff-elfs --elf-path <binary>.prev --comparing-elf-path <binary> --arch cortexm
+  ${LOCI_ASM_ANALYZE} diff-elfs --elf-path <binary>.prev --comparing-elf-path <binary> --arch cortexm
   ```
 - From the diff output, collect all function names with status `modified` or `added`
 - If no previous ELF exists, use `$ARGUMENTS` or the function(s) in the edited source file
@@ -39,7 +39,7 @@ disable-model-invocation: true
 
 - Run:
   ```
-  ${LOCI_SLICER} slice-elf --elf-path <binary> --output-types blocks,asm --arch cortexm
+  ${LOCI_ASM_ANALYZE} slice-elf --elf-path <binary> --output-types blocks,asm --arch cortexm
   ```
 - From the `blocks` CSV output, filter rows belonging to the changed functions
 - From the `asm` output, get per-function assembly for reference
@@ -63,7 +63,7 @@ disable-model-invocation: true
 
 - Call `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
   - **csv_text**: the block-level CSV from step 4
-  - **architecture**: the `timing_architecture` value from the slicer output (e.g., `cortexm`)
+  - **architecture**: the `timing_architecture` value from the asm-analyze output (e.g., `cortexm`)
 
 ## 6. ANALYZE RESULTS — HAPPY PATH SELF-TIME
 

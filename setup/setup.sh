@@ -124,7 +124,7 @@ install_slicer() {
   "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$SLICER_LOG" || return 1
 }
 
-echo -n "Setting up slicer environment... "
+echo -n "Setting up asm-analyze environment... "
 if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
   # Fast-path: skip install if venv already works for current wheel
   WHEEL_HASH=$(md5 -q "${WHEEL_DIR}"/*.whl 2>/dev/null || md5sum "${WHEEL_DIR}"/*.whl 2>/dev/null | awk '{print $1}')
@@ -153,7 +153,7 @@ if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
     echo -e "${GREEN}OK${NC}"
   fi
 else
-  echo -e "${YELLOW}no wheels in slicer-wheels/ — slicer disabled${NC}"
+  echo -e "${YELLOW}no wheels in slicer-wheels/ — asm-analyze disabled${NC}"
 fi
 
 # 5. Detect project
@@ -184,8 +184,8 @@ fi
 
 
 
-# 7b. Detect venv Python path (cross-platform) for slicer CLI
-LOCI_SLICER_CMD=""
+# 7b. Detect venv Python path (cross-platform) for asm-analyze CLI
+LOCI_ASM_ANALYZE_CMD=""
 if [ "$SLICER_AVAILABLE" = true ]; then
   if [ -x "${VENV_DIR}/bin/python" ]; then
     VENV_PYTHON="${VENV_DIR}/bin/python"
@@ -195,7 +195,7 @@ if [ "$SLICER_AVAILABLE" = true ]; then
     VENV_PYTHON=""
   fi
   if [ -n "$VENV_PYTHON" ]; then
-    LOCI_SLICER_CMD="${VENV_PYTHON} ${PLUGIN_DIR}/lib/slicer_cli.py"
+    LOCI_ASM_ANALYZE_CMD="${VENV_PYTHON} ${PLUGIN_DIR}/lib/asm_analyze.py"
   fi
 fi
 
@@ -245,10 +245,10 @@ CMD_COUNT=0
 for skill_dir in "${PLUGIN_DIR}/skills"/*/; do
   if [ -f "${skill_dir}SKILL.md" ]; then
     skill_name=$(basename "$skill_dir")
-    if [ -n "$LOCI_SLICER_CMD" ]; then
-      sed "s|\${LOCI_SLICER}|${LOCI_SLICER_CMD}|g" "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+    if [ -n "$LOCI_ASM_ANALYZE_CMD" ]; then
+      sed "s|\${LOCI_ASM_ANALYZE}|${LOCI_ASM_ANALYZE_CMD}|g" "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
     else
-      sed 's|\${LOCI_SLICER}|# slicer unavailable|g' "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+      sed 's|\${LOCI_ASM_ANALYZE}|# asm-analyze unavailable|g' "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
     fi
     CMD_COUNT=$((CMD_COUNT + 1))
   fi
@@ -272,7 +272,7 @@ echo "  - Monitor assembly file changes and binary diffs"
 echo "  - Stream context to LOCI MCP for execution-aware analysis"
 echo "  - Inject performance/regression warnings into Claude's context"
 if [ "$SLICER_AVAILABLE" = true ]; then
-echo "  - Analyze ELF binaries locally via bundled slicer CLI (symbols, assembly, blocks, diff)"
+echo "  - Analyze ELF binaries locally via bundled asm-analyze CLI (symbols, assembly, blocks, diff)"
 fi
 echo ""
 echo "Slash commands: /loci/analyze"

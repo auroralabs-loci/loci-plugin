@@ -5,13 +5,13 @@ disable-model-invocation: true
 
 # LOCI Timing Analysis
 
-the LOCI_SLICER is in lib/slicer_cli.py
+the LOCI_ASM_ANALYZE is in lib/asm_analyze.py
 
 you need to run it from within the .venv that is in the loci-plugin root directory
 
 For example, to extract assembly for a function called `apply_filter` from `filter.elf`:
 ```
-loci-plugin/.venv/bin/python3 loci-plugin/lib/slicer_cli.py extract-assembly \
+loci-plugin/.venv/bin/python3 loci-plugin/lib/asm_analyze.py extract-assembly \
   --elf-path filter.elf \
   --functions apply_filter
 ```
@@ -28,11 +28,11 @@ If a previous `.o` exists in `.loci-build/aarch64/`, use incremental compilation
    ```
 3. Diff `.o.prev` vs `.o` to find changed functions:
    ```
-   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
+   ${LOCI_ASM_ANALYZE} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
    ```
 4. Extract assembly for only `modified`/`added` functions:
    ```
-   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
+   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
    ```
 5. Skip to step 3 (MCP call) below.
 
@@ -46,10 +46,10 @@ If no `.o` exists yet, fall through to full compilation.
    ```
 2. Extract assembly with per-block granularity:
    ```
-   ${LOCI_SLICER} extract-assembly --elf-path <binary> --functions <func> --blocks blocks.csv
+   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <binary> --functions <func> --blocks blocks.csv
    ```
    The JSON output contains `timing_csv` (per-block rows like `calculate_0x718,...`) and `timing_architecture`.
-   If slicer unavailable, fallback: `objdump -d <binary> | sed -n '/<function>/,/^$/p'`
+   If asm-analyze unavailable, fallback: `objdump -d <binary> | sed -n '/<function>/,/^$/p'`
 3. Call `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
    - `csv_text`: the `timing_csv` value from step 2's JSON output
    - `architecture`: the `timing_architecture` value from step 2's JSON output

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LOCI Slicer CLI — local ELF binary analysis tool.
+"""LOCI asm-analyze CLI — local ELF binary analysis tool.
 
 Wraps the asmslicer library to provide ELF binary analysis from the
 command line. Intended to be called by Claude via Bash, replacing the
@@ -26,16 +26,16 @@ import traceback
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Architecture mapping between slicer and timing backend
+# Architecture mapping to timing backend
 # ---------------------------------------------------------------------------
-SLICER_TO_TIMING = {
+ARCH_TO_TIMING = {
     "aarch64": "aarch64",
     "cortexm": "cortexm",
     "tricore": "tricore",
 }
-TIMING_TO_SLICER = {v: k for k, v in SLICER_TO_TIMING.items()}
+TIMING_TO_ARCH = {v: k for k, v in ARCH_TO_TIMING.items()}
 
-# Accepted architecture aliases (user input → slicer canonical name)
+# Accepted architecture aliases (user input → canonical name)
 ARCH_ALIASES = {
     "aarch64": "aarch64",
     "arm64": "aarch64",
@@ -50,15 +50,15 @@ ARCH_ALIASES = {
 
 
 def resolve_arch(arch_input: str | None) -> str | None:
-    """Resolve a user-provided architecture string to slicer canonical name."""
+    """Resolve a user-provided architecture string to canonical name."""
     if arch_input is None:
         return None
     return ARCH_ALIASES.get(arch_input.lower().strip())
 
 
-def timing_arch(slicer_arch: str) -> str:
-    """Map slicer architecture name to timing backend name."""
-    return SLICER_TO_TIMING.get(slicer_arch, slicer_arch)
+def timing_arch(arch: str) -> str:
+    """Map architecture name to timing backend name."""
+    return ARCH_TO_TIMING.get(arch, arch)
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def timing_arch(slicer_arch: str) -> str:
 # ---------------------------------------------------------------------------
 VALID_OUTPUT_TYPES = {"asm", "symbols", "blocks", "segments", "callgraph", "elfinfo"}
 
-# Map output_type names to slicer output file stems
+# Map output_type names to asmslicer output file stems
 OUTPUT_TYPE_TO_STEM = {
     "asm": "asm",
     "symbols": "symmap",
@@ -90,11 +90,11 @@ OUTPUT_TYPE_TO_KWARG = {
 # ---------------------------------------------------------------------------
 # Asmslicer wrapper
 # ---------------------------------------------------------------------------
-def run_slicer(elf_path: str, architecture: str | None = None) -> dict:
+def run_analysis(elf_path: str, architecture: str | None = None) -> dict:
     """Run asmslicer.process() and return {arch, files} with raw output content.
 
     Returns dict with:
-        arch: detected/specified architecture (slicer canonical name)
+        arch: detected/specified architecture (canonical name)
         files: dict mapping output type to file content string
     """
     from loci.service.asmslicer import asmslicer
@@ -103,10 +103,10 @@ def run_slicer(elf_path: str, architecture: str | None = None) -> dict:
     if not elf.is_file():
         raise FileNotFoundError(f"ELF file not found: {elf_path}")
 
-    with tempfile.TemporaryDirectory(prefix="loci-slicer-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="loci-asm-analyze-") as tmpdir:
         kwargs = {
             "elf_file_path": str(elf),
-            "log": logging.getLogger("loci.slicer"),
+            "log": logging.getLogger("loci.asm-analyze"),
         }
         if architecture:
             kwargs["architecture"] = architecture
@@ -128,7 +128,7 @@ def run_slicer(elf_path: str, architecture: str | None = None) -> dict:
         detected_arch = architecture
         if not detected_arch and "elfinfo" in files:
             elfinfo = files["elfinfo"]
-            for arch_key in SLICER_TO_TIMING:
+            for arch_key in ARCH_TO_TIMING:
                 if arch_key.lower() in elfinfo.lower():
                     detected_arch = arch_key
                     break
@@ -254,7 +254,7 @@ def slice_elf(elf_path: str, architecture: str | None = None,
         return {"error": f"Invalid output_types: {sorted(invalid)}. Valid: {sorted(VALID_OUTPUT_TYPES)}"}
 
     arch = resolve_arch(architecture)
-    result = run_slicer(elf_path, arch)
+    result = run_analysis(elf_path, arch)
     detected_arch = result["arch"]
     files = result["files"]
 
@@ -297,13 +297,13 @@ def extract_assembly(elf_path: str, functions: list[str] | None = None,
                      architecture: str | None = None,
                      blocks_file: str | None = None) -> dict:
     arch = resolve_arch(architecture)
-    result = run_slicer(elf_path, arch)
+    result = run_analysis(elf_path, arch)
     detected_arch = result["arch"]
     files = result["files"]
 
     asm_text = files.get("asm")
     if not asm_text:
-        return {"error": "No assembly output produced by slicer"}
+        return {"error": "No assembly output produced by asmslicer"}
 
     all_funcs = parse_functions_from_asm(asm_text)
 
@@ -403,12 +403,12 @@ def extract_assembly(elf_path: str, functions: list[str] | None = None,
 
 def extract_symbols(elf_path: str, architecture: str | None = None) -> dict:
     arch = resolve_arch(architecture)
-    result = run_slicer(elf_path, arch)
+    result = run_analysis(elf_path, arch)
     files = result["files"]
 
     symmap_text = files.get("symmap")
     if not symmap_text:
-        return {"error": "No symbol map output produced by slicer"}
+        return {"error": "No symbol map output produced by asmslicer"}
 
     symbols = parse_symbols(symmap_text)
 
@@ -430,12 +430,12 @@ def diff_elfs(elf_path: str, comparing_elf_path: str,
     if not Path(comparing_elf_path).is_file():
         return {"error": f"Comparing ELF not found: {comparing_elf_path}"}
 
-    with tempfile.TemporaryDirectory(prefix="loci-slicer-diff-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="loci-asm-analyze-diff-") as tmpdir:
         diff_kwargs = {
             "elf_file_path": elf_path,
             "comparing_elf_file_path": comparing_elf_path,
             "compare_out": tmpdir,
-            "log": logging.getLogger("loci.slicer"),
+            "log": logging.getLogger("loci.asm-analyze"),
         }
         if arch:
             diff_kwargs["architecture"] = arch
@@ -494,8 +494,8 @@ def blocks_to_timing(blocks_file: str,
 # ---------------------------------------------------------------------------
 def main():
     parser = argparse.ArgumentParser(
-        prog="slicer_cli",
-        description="LOCI Slicer — local ELF binary analysis tool",
+        prog="asm-analyze",
+        description="LOCI asm-analyze — local ELF binary analysis tool",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

@@ -18,12 +18,12 @@ If a previous `.o` exists in `.loci-build/aarch64/`, use incremental compilation
    ```
 3. **Diff** `.o.prev` vs `.o` to find changed functions:
    ```
-   ${LOCI_SLICER} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
+   ${LOCI_ASM_ANALYZE} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
    ```
    Only `modified` and `added` functions need analysis.
 4. **Extract assembly** for changed functions only:
    ```
-   ${LOCI_SLICER} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
+   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
    ```
 5. Skip to **Step 3** (MCP call) below.
 
@@ -36,17 +36,17 @@ If no `.o` exists yet, fall through to full compilation in Step 1.
    aarch64-linux-gnu-g++ -O2 -march=armv8-a -o <output> <source>
    ```
 
-2. **Extract assembly** with per-block granularity using the slicer:
+2. **Extract assembly** with per-block granularity using asm-analyze:
    ```
-   ${LOCI_SLICER} extract-assembly --elf-path <binary> --functions <funcs> --blocks blocks.csv
+   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <binary> --functions <funcs> --blocks blocks.csv
    ```
    The JSON output contains `timing_csv` (per-block rows like `calculate_0x718,...`) and `timing_architecture`.
 
-   If no specific functions were requested, first run `${LOCI_SLICER} extract-symbols --elf-path <binary>` to list symbols, then select the user-defined ones.
+   If no specific functions were requested, first run `${LOCI_ASM_ANALYZE} extract-symbols --elf-path <binary>` to list symbols, then select the user-defined ones.
 
    For standalone block transform (e.g., from a previously saved blocks CSV):
    ```
-   ${LOCI_SLICER} blocks-to-timing --blocks blocks.csv --functions <funcs>
+   ${LOCI_ASM_ANALYZE} blocks-to-timing --blocks blocks.csv --functions <funcs>
    ```
 
 3. **Call the batch MCP tool**:
