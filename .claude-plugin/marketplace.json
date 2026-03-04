@@ -8,7 +8,7 @@
         {
             "name": "loci-plugin",
             "source": {
-                "source": "github",
+                "source": "url",
                 "repo": "https://github.com/auroralabs-loci/loci-plugin.git",
                 "ref": "production"
             },
