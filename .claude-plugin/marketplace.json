@@ -8,8 +8,8 @@
         {
             "name": "loci-plugin",
             "source": {
-                "source": "github",
-                "repo": "auroralabs-loci/loci-plugin",
+                "source": "url",
+                "url": "https://github.com/auroralabs-loci/loci-plugin.git",
                 "ref": "production"
             },
             "description": "Automatic code formatting on save",
