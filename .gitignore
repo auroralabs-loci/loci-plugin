@@ -1,5 +1,6 @@
 # Runtime state and logs
 loci-plugin/state/
+state/
 .loci-build/
 *.log
 *.pid
@@ -23,3 +24,4 @@ ENV/
 .DS_Store
 Thumbs.db
 
+.claude
