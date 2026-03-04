@@ -32,17 +32,17 @@ Running `setup.sh` wires these together into your project in one step.
 
 ### 2. Python virtual environment — `loci-plugin/.venv/`
 
-A Python 3.12 venv is created and the following packages are installed from `loci-plugin/slicer-wheels/` and PyPI:
+A Python 3.12 venv is created and the following packages are installed from `loci-plugin/asm-analyze-wheels/` and PyPI:
 
 | Package | Source | Purpose |
 |---------|--------|---------|
-| `loci_service_asmslicer` | bundled `.whl` | Core ELF analysis library (assembly extraction, symbol maps, binary diffs, timing CSV output) |
-| `unicorn` | PyPI | CPU emulation engine used internally by asmslicer |
+| `loci_service_asm_analyze` | bundled `.whl` | Core ELF analysis library (assembly extraction, symbol maps, binary diffs, timing CSV output) |
+| `unicorn` | PyPI | CPU emulation engine used internally by asm-analyze |
 | *(undeclared deps)* | PyPI | Detected by import probing and installed automatically |
 
 The venv is hash-checked against the bundled wheel on every `setup.sh` run — if the wheel hasn't changed the venv is reused as-is.
 
-If no `.whl` is found in `slicer-wheels/`, the venv step is skipped. The remote timing backend still works without asm-analyze.
+If no `.whl` is found in `asm-analyze-wheels/`, the venv step is skipped. The remote timing backend still works without asm-analyze.
 
 ### 3. State directories — `loci-plugin/state/`
 
@@ -127,7 +127,7 @@ loci-plugin/
 ├── hooks/                         ← shell hook scripts called by Claude Code
 ├── lib/                           ← bridge daemon, asm-analyze CLI, utilities
 ├── skills/                        ← slash command source templates
-├── slicer-wheels/                 ← bundled asmslicer wheel
+├── asm-analyze-wheels/                 ← bundled asm-analyze wheel
 └── config/loci.json               ← bridge configuration
 ```
 
@@ -148,12 +148,12 @@ The plugin must sit three directories below the project root so `setup.sh` can l
             └── ...
 ```
 
-### 2. Add the asmslicer wheel (optional)
+### 2. Add the asm-analyze wheel (optional)
 
-Copy the provided `.whl` file into `slicer-wheels/`:
+Copy the provided `.whl` file into `asm-analyze-wheels/`:
 
 ```bash
-cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/slicer-wheels/
+cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/asm-analyze-wheels/
 ```
 
 If you skip this, all slash commands and the timing backend still work — only local ELF analysis (assembly extraction, symbol maps, binary diffs) requires asm-analyze.
@@ -198,7 +198,7 @@ Inside Claude Code:
 
 ## Troubleshooting
 
-**No `.mcp.json` created** — Re-run `setup.sh`. It should always complete all steps regardless of asmslicer wheel availability.
+**No `.mcp.json` created** — Re-run `setup.sh`. It should always complete all steps regardless of asm-analyze wheel availability.
 
 **No MCP servers in `/mcp`** — Verify `.mcp.json` is at the project root (not inside `.claude/`):
 ```bash
@@ -214,11 +214,11 @@ cat .claude/settings.json | jq '.hooks | keys'
 ```
 Should show all five hook events.
 
-**"no wheels in slicer-wheels/"** — Drop the `.whl` file into `slicer-wheels/` and re-run setup.
+**"no wheels in asm-analyze-wheels/"** — Drop the `.whl` file into `asm-analyze-wheels/` and re-run setup.
 
 **asm-analyze venv creation failed** — Check the log:
 ```bash
-cat loci-plugin/state/slicer-setup.log
+cat loci-plugin/state/asm-analyze-setup.log
 ```
 
 **Bridge daemon not starting** — Check:

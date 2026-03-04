@@ -87,14 +87,14 @@ mkdir -p "${PLUGIN_DIR}/state/analysis-queue"
 [ -f "${PLUGIN_DIR}/state/loci-baselines.json" ] || echo '{}' > "${PLUGIN_DIR}/state/loci-baselines.json"
 echo -e "${GREEN}OK${NC}"
 
-# 4b. Set up slicer environment
+# 4b. Set up asm-analyze environment
 VENV_DIR="${PLUGIN_DIR}/.venv"
-WHEEL_DIR="${PLUGIN_DIR}/slicer-wheels"
-SLICER_AVAILABLE=false
-SLICER_LOG="${PLUGIN_DIR}/state/slicer-setup.log"
+WHEEL_DIR="${PLUGIN_DIR}/asm-analyze-wheels"
+ASM_ANALYZE_AVAILABLE=false
+ASM_ANALYZE_LOG="${PLUGIN_DIR}/state/asm-analyze-setup.log"
 
-install_slicer() {
-  : > "$SLICER_LOG"
+install_asm_analyze() {
+  : > "$ASM_ANALYZE_LOG"
 
   # Neutralize any globally-configured private package registries (e.g. GCP Artifact Registry)
   # that would block waiting for credentials. All deps come from the local wheel or PyPI.
@@ -102,11 +102,11 @@ install_slicer() {
   export UV_INDEX_URL="https://pypi.org/simple/"
 
   if [ ! -d "$VENV_DIR" ]; then
-    uv venv --python 3.12 "$VENV_DIR" >> "$SLICER_LOG" 2>&1 || return 1
+    uv venv --python 3.12 "$VENV_DIR" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
   fi
 
-  VIRTUAL_ENV="$VENV_DIR" uv pip install "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
-  VIRTUAL_ENV="$VENV_DIR" uv pip install unicorn >> "$SLICER_LOG" 2>&1 || true
+  VIRTUAL_ENV="$VENV_DIR" uv pip install "${WHEEL_DIR}"/*.whl >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
+  VIRTUAL_ENV="$VENV_DIR" uv pip install unicorn >> "$ASM_ANALYZE_LOG" 2>&1 || true
 
   # The wheel may have undeclared dependencies — detect and install them
   for _attempt in 1 2 3 4 5; do
@@ -116,12 +116,12 @@ install_slicer() {
     if [ -z "$MISSING" ]; then
       return 0
     fi
-    echo "Installing undeclared dependency: ${MISSING}" >> "$SLICER_LOG"
-    VIRTUAL_ENV="$VENV_DIR" uv pip install "$MISSING" >> "$SLICER_LOG" 2>&1 || return 1
+    echo "Installing undeclared dependency: ${MISSING}" >> "$ASM_ANALYZE_LOG"
+    VIRTUAL_ENV="$VENV_DIR" uv pip install "$MISSING" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
   done
 
   # Final verify after all deps installed
-  "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$SLICER_LOG" || return 1
+  "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$ASM_ANALYZE_LOG" || return 1
 }
 
 echo -n "Setting up asm-analyze environment... "
@@ -131,29 +131,29 @@ if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
   MARKER_FILE="${VENV_DIR}/.loci-wheel-hash"
   if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$WHEEL_HASH" ] \
       && "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
-    SLICER_AVAILABLE=true
+    ASM_ANALYZE_AVAILABLE=true
     echo -e "${GREEN}OK (cached)${NC}"
-  elif ! install_slicer; then
+  elif ! install_asm_analyze; then
     # Stale or broken venv — nuke and retry once
     rm -rf "$VENV_DIR"
-    if install_slicer; then
-      SLICER_AVAILABLE=true
+    if install_asm_analyze; then
+      ASM_ANALYZE_AVAILABLE=true
       echo -e "${GREEN}OK (rebuilt venv)${NC}"
     else
       echo -e "${YELLOW}FAILED${NC}"
-      echo -e "  ${YELLOW}See details: cat ${SLICER_LOG}${NC}"
-      LAST_ERR=$(grep -iE '(error|no matching|not a supported|incompatible)' "$SLICER_LOG" | tail -1)
+      echo -e "  ${YELLOW}See details: cat ${ASM_ANALYZE_LOG}${NC}"
+      LAST_ERR=$(grep -iE '(error|no matching|not a supported|incompatible)' "$ASM_ANALYZE_LOG" | tail -1)
       if [ -n "$LAST_ERR" ]; then
         echo -e "  ${YELLOW}${LAST_ERR}${NC}"
       fi
     fi
   else
-    SLICER_AVAILABLE=true
+    ASM_ANALYZE_AVAILABLE=true
     echo "$WHEEL_HASH" > "$MARKER_FILE"
     echo -e "${GREEN}OK${NC}"
   fi
 else
-  echo -e "${YELLOW}no wheels in slicer-wheels/ — asm-analyze disabled${NC}"
+  echo -e "${YELLOW}no wheels in asm-analyze-wheels/ — asm-analyze disabled${NC}"
 fi
 
 # 5. Detect project
@@ -186,7 +186,7 @@ fi
 
 # 7b. Detect venv Python path (cross-platform) for asm-analyze CLI
 LOCI_ASM_ANALYZE_CMD=""
-if [ "$SLICER_AVAILABLE" = true ]; then
+if [ "$ASM_ANALYZE_AVAILABLE" = true ]; then
   if [ -x "${VENV_DIR}/bin/python" ]; then
     VENV_PYTHON="${VENV_DIR}/bin/python"
   elif [ -x "${VENV_DIR}/Scripts/python.exe" ]; then
@@ -271,7 +271,7 @@ echo "  - Track binary artifacts and source-to-binary relationships"
 echo "  - Monitor assembly file changes and binary diffs"
 echo "  - Stream context to LOCI MCP for execution-aware analysis"
 echo "  - Inject performance/regression warnings into Claude's context"
-if [ "$SLICER_AVAILABLE" = true ]; then
+if [ "$ASM_ANALYZE_AVAILABLE" = true ]; then
 echo "  - Analyze ELF binaries locally via bundled asm-analyze CLI (symbols, assembly, blocks, diff)"
 fi
 echo ""

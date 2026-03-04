@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LOCI asm-analyze CLI — local ELF binary analysis tool.
 
-Wraps the asmslicer library to provide ELF binary analysis from the
+Wraps the asm-analyze library to provide ELF binary analysis from the
 command line. Intended to be called by Claude via Bash, replacing the
 former MCP server interface.
 
@@ -66,7 +66,7 @@ def timing_arch(arch: str) -> str:
 # ---------------------------------------------------------------------------
 VALID_OUTPUT_TYPES = {"asm", "symbols", "blocks", "segments", "callgraph", "elfinfo"}
 
-# Map output_type names to asmslicer output file stems
+# Map output_type names to asm-analyze output file stems
 OUTPUT_TYPE_TO_STEM = {
     "asm": "asm",
     "symbols": "symmap",
@@ -76,7 +76,7 @@ OUTPUT_TYPE_TO_STEM = {
     "elfinfo": "elfinfo",
 }
 
-# Map output_type names to asmslicer.process() keyword argument names
+# Map output_type names to asm-analyze process() keyword argument names
 OUTPUT_TYPE_TO_KWARG = {
     "asm": "out_asm_file",
     "symbols": "out_sym_map_file",
@@ -88,10 +88,10 @@ OUTPUT_TYPE_TO_KWARG = {
 
 
 # ---------------------------------------------------------------------------
-# Asmslicer wrapper
+# asm-analyze wrapper
 # ---------------------------------------------------------------------------
 def run_analysis(elf_path: str, architecture: str | None = None) -> dict:
-    """Run asmslicer.process() and return {arch, files} with raw output content.
+    """Run asm-analyze process() and return {arch, files} with raw output content.
 
     Returns dict with:
         arch: detected/specified architecture (canonical name)
@@ -303,7 +303,7 @@ def extract_assembly(elf_path: str, functions: list[str] | None = None,
 
     asm_text = files.get("asm")
     if not asm_text:
-        return {"error": "No assembly output produced by asmslicer"}
+        return {"error": "No assembly output produced by asm-analyze"}
 
     all_funcs = parse_functions_from_asm(asm_text)
 
@@ -408,7 +408,7 @@ def extract_symbols(elf_path: str, architecture: str | None = None) -> dict:
 
     symmap_text = files.get("symmap")
     if not symmap_text:
-        return {"error": "No symbol map output produced by asmslicer"}
+        return {"error": "No symbol map output produced by asm-analyze"}
 
     symbols = parse_symbols(symmap_text)
 
