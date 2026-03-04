@@ -207,6 +207,12 @@ class CppAnalyzer:
                             file=action.cpp_context.get("output_binary", ""),
                             severity=check["severity"], category=check["category"],
                             message=check["message"], timestamp=now))
+                    else:
+                        # Flag is present — resolve any prior warning of this type
+                        insights.append(LociInsight(
+                            file=action.cpp_context.get("output_binary", ""),
+                            severity=check["severity"], category=check["category"],
+                            message=check["message"], timestamp=now, active=False))
 
             if action.action_type == "shell_command":
                 cmd = action.tool_input.get("command", "")
@@ -368,7 +374,21 @@ class LociBridge:
             except Exception:
                 pass
         for insight in new_insights:
-            existing.append(insight.to_dict())
+            if not insight.active:
+                # Deactivate all existing warnings with the same (category, message)
+                for w in existing:
+                    if w.get("category") == insight.category and w.get("message") == insight.message:
+                        w["active"] = False
+                continue
+            # Deduplicate: skip if an active warning with the same (category, message) exists
+            already = any(
+                w.get("category") == insight.category
+                and w.get("message") == insight.message
+                and w.get("active", True)
+                for w in existing
+            )
+            if not already:
+                existing.append(insight.to_dict())
         existing = existing[-50:]
         self.metrics["warnings_active"] = sum(1 for w in existing if w.get("active", True))
         self._write_warnings(existing)
