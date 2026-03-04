@@ -3,7 +3,7 @@ loci-plugin/state/
 .loci-build/
 *.log
 *.pid
-
+.vscode
 # Python
 __pycache__/
 *.py[cod]
