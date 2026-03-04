@@ -1,0 +1,20 @@
+{
+    "name": "company-tools",
+    "owner": {
+        "name": "AuroraLabs",
+        "email": "devtools@auroralabs.com"
+    },
+    "plugins": [
+        {
+            "name": "loci-plugin",
+            "source": "url",
+            "repo": "https://github.com/auroralabs-loci/loci-plugin.git",
+            "ref": "production",
+            "description": "Automatic code formatting on save",
+            "version": "0.1.0",
+            "author": {
+                "name": "AuroraLabs Team"
+            }
+        }
+    ]
+}
