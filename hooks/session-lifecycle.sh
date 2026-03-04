@@ -86,10 +86,10 @@ You do NOT need a fully linked binary. Compile individual source files with -c t
 This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
 
 ## Mindset
-Every line of C++ is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
+Every line of C++ , C or RUST is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
 
 ## Available tools
-- /loci/analyze — full workflow: compile, extract assembly, measure
+- /loci/analyze — full workflow: compile, extract assembly, measure (execution time in ns, and energy in Ws)
 - ${LOCI_ASM_ANALYZE} — ELF/object file slicer (extract-assembly, diff-elfs, slice-elf)
 - mcp__loci-plugin__get_assembly_block_exec_behavior — timing/energy predictions
 LOCI_CONTEXT
