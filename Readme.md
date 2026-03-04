@@ -19,16 +19,6 @@ LOCI adds the missing layer: **execution awareness**. It gives your AI agent bou
 2. **Execution Awareness** — From binary analysis, the agent reasons about how code behaves under real software runs and workloads
 3. **Ground Your Agent** — The agent receives bounded, evidence-based constraints of execution behaviout — eliminating hallucinated performance claims
 
-
-## Typical example workflow
-
-```
-1. Compile with target flags:  g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
-2. Extract assembly:           objdump -d sensor | sed -n '/<my_func>/,/^$/p'
-3. Call get_assembly_block_exec_behavior with architecture: "cortex-m4"
-4. LOCI returns:               execution_time_ns=1240, std_dev_ns=85, energy_ws=0.00012
-```
-
 ## Installation
 
 **Prerequisites:** `jq`, `python3`, a C++ compiler
@@ -48,7 +38,7 @@ Claude calls `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `csv_text` | string | CSV with columns `function_name` and `assembly_code` |
-| `architecture` | string | `cortex-a53`, `cortex-m4`, or `tc399` |
+| `architecture` | string | `aarch64`, `armv7e-m`, or `tc3xx` |
 
 **Returns:** `execution_time_ns`, `std_dev_ns`, `energy_ws` per function
 
@@ -56,9 +46,9 @@ Claude calls `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
 
 | Value | Hardware |
 |-------|----------|
-| `cortex-a53` | ARM Cortex-A53 — embedded Linux |
-| `cortex-m4` | ARM Cortex-M4 — microcontrollers, RTOS |
-| `tc399` | Infineon AURIX TC399 — automotive |
+| `aarch64` | ARM aarch64 — embedded Linux |
+| `armv7e-m` | ARM armv7e-m — microcontrollers, RTOS |
+| `tc3xx` | Infineon AURIX tc3xx — automotive |
 
 
 
