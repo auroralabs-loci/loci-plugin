@@ -1,2 +1,29 @@
+# Runtime state and logs
 loci-plugin/state/
 .loci-build/
+*.log
+*.pid
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local config overrides
+.mcp.json
+loci-plugin/config/loci.json
