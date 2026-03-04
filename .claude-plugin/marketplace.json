@@ -1,8 +1,8 @@
 {
     "name": "loci-plugin",
     "owner": {
-        "name": "AuroraLabs",
-        "email": "devtools@auroralabs.com"
+        "name": "AuroraLabs", 
+        "email": "info@auroralabs.com"
     },
     "plugins": [
         {
