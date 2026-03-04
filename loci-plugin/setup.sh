@@ -19,15 +19,47 @@ echo ""
 
 # 1. Check dependencies
 echo -n "Checking dependencies... "
-MISSING=()
-command -v jq >/dev/null 2>&1 || MISSING+=("jq")
-command -v python3 >/dev/null 2>&1 || MISSING+=("python3")
+_auto_install() {
+  local pkg="$1"
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    brew install "$pkg"
+  elif command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get install -y "$pkg"
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y "$pkg"
+  else
+    return 1
+  fi
+}
 
-if [ ${#MISSING[@]} -gt 0 ]; then
-  echo -e "${RED}MISSING${NC}"
-  echo "  Please install: ${MISSING[*]}"
-  exit 1
+if ! command -v jq >/dev/null 2>&1; then
+  echo -e "${YELLOW}jq not found — installing...${NC}"
+  if ! _auto_install jq || ! command -v jq >/dev/null 2>&1; then
+    echo -e "${RED}Failed to install jq. Please install it manually.${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}jq installed${NC}"
 fi
+
+echo -e "${YELLOW}Installing binutils...${NC}"
+_auto_install binutils
+echo -e "${GREEN}binutils installed${NC}"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo -e "${YELLOW}uv not found — installing...${NC}"
+  if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    brew install uv
+  else
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+  fi
+  if ! command -v uv >/dev/null 2>&1; then
+    echo -e "${RED}Failed to install uv. Please install it manually.${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}uv installed${NC}"
+fi
+
 echo -e "${GREEN}OK${NC}"
 
 # 2. Check C++ toolchain
@@ -66,20 +98,15 @@ install_slicer() {
 
   # Neutralize any globally-configured private package registries (e.g. GCP Artifact Registry)
   # that would block waiting for credentials. All deps come from the local wheel or PyPI.
-  export PIP_EXTRA_INDEX_URL=""
-  export PIP_INDEX_URL="https://pypi.org/simple/"
+  export UV_EXTRA_INDEX_URL=""
+  export UV_INDEX_URL="https://pypi.org/simple/"
 
   if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR" >> "$SLICER_LOG" 2>&1 || return 1
+    uv venv --python 3.12 "$VENV_DIR" >> "$SLICER_LOG" 2>&1 || return 1
   fi
 
-  [ -x "${VENV_DIR}/bin/pip" ] || return 1
-
-  # Only upgrade pip if it's very old (avoids a PyPI round-trip every run)
-  PIP_VER=$("${VENV_DIR}/bin/pip" --version 2>/dev/null | awk '{print $2}' | cut -d. -f1)
-  [ "${PIP_VER:-0}" -lt 23 ] && "${VENV_DIR}/bin/pip" install --quiet --upgrade pip >> "$SLICER_LOG" 2>&1 || true
-  "${VENV_DIR}/bin/pip" install "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
-  "${VENV_DIR}/bin/pip" install --quiet unicorn >> "$SLICER_LOG" 2>&1 || true
+  VIRTUAL_ENV="$VENV_DIR" uv pip install "${WHEEL_DIR}"/*.whl >> "$SLICER_LOG" 2>&1 || return 1
+  VIRTUAL_ENV="$VENV_DIR" uv pip install unicorn >> "$SLICER_LOG" 2>&1 || true
 
   # The wheel may have undeclared dependencies — detect and install them
   for _attempt in 1 2 3 4 5; do
@@ -90,7 +117,7 @@ install_slicer() {
       return 0
     fi
     echo "Installing undeclared dependency: ${MISSING}" >> "$SLICER_LOG"
-    "${VENV_DIR}/bin/pip" install --quiet "$MISSING" >> "$SLICER_LOG" 2>&1 || return 1
+    VIRTUAL_ENV="$VENV_DIR" uv pip install "$MISSING" >> "$SLICER_LOG" 2>&1 || return 1
   done
 
   # Final verify after all deps installed
@@ -155,30 +182,7 @@ else
   exit 1
 fi
 
-# 7. Check .mcp.json
-echo -n "Checking LOCI MCP server config... "
-PROJECT_ROOT="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
-if [ -f "${PROJECT_ROOT}/.mcp.json" ]; then
-  MCP_URL=$(jq -r '.mcpServers["loci-plugin"].url // empty' "${PROJECT_ROOT}/.mcp.json" 2>/dev/null)
-  if [ -n "$MCP_URL" ]; then
-    echo -e "${GREEN}${MCP_URL}${NC}"
-  else
-    echo -e "${YELLOW}loci-plugin not found in .mcp.json${NC}"
-  fi
-else
-  echo -e "${YELLOW}.mcp.json not found${NC}"
-  echo "  Creating .mcp.json with LOCI MCP server..."
-  echo '{
-  "mcpServers": {
-    "loci-plugin": {
-      "type": "http",
-      "url": "https://dev.local.mcp.loci-dev.net/mcp"
-    }
-  }
-}
-' > "${PROJECT_ROOT}/.mcp.json"
-  echo -e "  ${GREEN}Created${NC}"
-fi
+
 
 # 7b. Detect venv Python path (cross-platform) for slicer CLI
 LOCI_SLICER_CMD=""
@@ -197,6 +201,7 @@ fi
 
 # 8. Register hooks with Claude Code
 echo -n "Registering hooks... "
+PROJECT_ROOT="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
 SETTINGS_FILE="${PROJECT_ROOT}/.claude/settings.json"
 mkdir -p "${PROJECT_ROOT}/.claude"
 
@@ -273,4 +278,10 @@ echo ""
 echo "Slash commands: /loci/analyze"
 echo ""
 echo "Restart Claude Code to activate."
+echo ""
+echo -e "${YELLOW}IMPORTANT: Authorize the LOCI MCP server in Claude Code${NC}"
+echo "  1. Restart Claude Code"
+echo "  2. Open any project file and start a conversation"
+echo "  3. Claude will prompt you to approve the 'loci-plugin' MCP server"
+echo "  4. Click 'Allow' to grant access"
 echo ""

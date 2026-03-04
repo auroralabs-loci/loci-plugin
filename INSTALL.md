@@ -1,324 +1,231 @@
-# LOCI Plugin Installation
+# LOCI Plugin — Installation Guide
 
-Add the LOCI plugin to a C++ project for execution-aware timing analysis and ELF binary slicing, all from within Claude Code.
+## Overview
 
-## What you get
+The LOCI plugin adds execution-aware C++ analysis to Claude Code. It has two sides:
 
-One MCP server + one bundled CLI tool:
+- **Local side** — hooks, a background daemon, and a bundled ELF slicer CLI that run entirely on your machine.
+- **Remote side** — an MCP server (SSE) that predicts execution time, standard deviation, and energy consumption for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399).
 
-- **loci-plugin** (remote, SSE) — predicts execution time for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399)
-- **slicer CLI** (local, bundled) — parses ELF binaries to extract symbols, disassembly, basic blocks, callgraphs, and binary diffs. Called via Bash like any other CLI tool.
+Running `setup.sh` wires these together into your project in one step.
 
-The slicer feeds assembly to the timing backend in exactly the right format. No more manual `objdump` + copy-paste.
+---
 
 ## Prerequisites
 
-- Python 3.8+
-- `jq`
-- A C++ compiler (`g++` or `clang++`)
-- A cross-compiler for your target architecture (e.g., `aarch64-linux-gnu-g++` for Cortex-A53, `arm-none-eabi-g++` for Cortex-M4)
-- The `asmslicer` wheel file (provided by AuroraLabs, e.g. `loci_service_asmslicer-*.whl`)
+| Requirement | Notes |
+|-------------|-------|
+| `jq` | Installed automatically if missing (Homebrew / apt / dnf) |
+| `binutils` | Installed automatically (`objdump` is needed for ELF disassembly) |
+| `uv` | Installed automatically (Homebrew or `astral.sh/uv`); manages the Python venv |
+| Python 3.12 | Managed by `uv` — no system Python required |
+| `g++` or `clang++` | Detected but **not** installed; must already be present |
+| Cross-compiler | For embedded targets (e.g., `arm-none-eabi-g++` for Cortex-M4); not installed by setup |
 
-## 1. Install the plugin
+---
 
-The plugin lives at `.claude/plugins/loci-plugin/` — three directories below the project root. `setup.sh` uses this depth to find the project root and write config files there.
+## What gets installed
 
-From your project root:
+### 1. System packages
 
-```bash
-mkdir -p .claude/plugins
-cp -r /path/to/loci-plugin/loci-plugin .claude/plugins/loci-plugin
+`jq`, `binutils`, and `uv` are installed automatically if not found, using whatever package manager is available on the host (`brew`, `apt-get`, or `dnf`).
+
+### 2. Python virtual environment — `loci-plugin/.venv/`
+
+A Python 3.12 venv is created and the following packages are installed from `loci-plugin/slicer-wheels/` and PyPI:
+
+| Package | Source | Purpose |
+|---------|--------|---------|
+| `loci_service_asmslicer` | bundled `.whl` | Core ELF analysis library (assembly extraction, symbol maps, binary diffs, timing CSV output) |
+| `unicorn` | PyPI | CPU emulation engine used internally by the slicer |
+| *(undeclared deps)* | PyPI | Detected by import probing and installed automatically |
+
+The venv is hash-checked against the bundled wheel on every `setup.sh` run — if the wheel hasn't changed the venv is reused as-is.
+
+If no `.whl` is found in `slicer-wheels/`, the venv step is skipped. The remote timing backend still works without the slicer.
+
+### 3. State directories — `loci-plugin/state/`
+
+| Path | Purpose |
+|------|---------|
+| `state/queue/` | Transient action queue — hook scripts drop JSON here; bridge daemon consumes and deletes |
+| `state/sessions/` | Per-session manifests (written at `SessionStart` / `SessionEnd`) |
+| `state/analysis-queue/` | Reserved for async binary analysis tasks |
+| `state/loci-baselines.json` | Timing baselines per function, used for regression detection across sessions |
+
+Runtime files created during normal operation (not by setup):
+
+| File | Written by | Purpose |
+|------|-----------|---------|
+| `state/loci-warnings.json` | Bridge daemon | Active heuristic warnings injected into Claude's context at `PreToolUse` |
+| `state/loci-context.json` | Bridge daemon | Session action timeline and file relationships |
+| `state/loci-metrics.json` | Bridge daemon | Hook throughput stats (for `monitor-hooks.py`) |
+| `state/loci-actions.log` | Hook scripts | Append-only line-delimited JSON audit trail |
+| `state/bridge.log` | Bridge daemon | Python logging output |
+| `state/hook-errors.log` | Hook scripts | Hook script failures |
+| `state/bridge.pid` | `session-lifecycle.sh` | PID of the running bridge for `SIGUSR1` signaling |
+
+### 4. Claude Code hooks — `.claude/settings.json`
+
+Hooks are merged into (or written to) `<project-root>/.claude/settings.json` with absolute paths:
+
+| Event | Trigger | Script | Behaviour |
+|-------|---------|--------|-----------|
+| `SessionStart` | Always | `session-lifecycle.sh` | Starts the bridge daemon, writes session manifest |
+| `SessionEnd` | Always | `session-lifecycle.sh` | Stops the daemon, generates session summary |
+| `PreToolUse` | `Bash` | `capture-action.sh` | Injects active warnings for files Claude is about to touch |
+| `PreToolUse` | `Write` / `Edit` | `capture-action.sh` | Checks code modifications against known heuristic patterns |
+| `PreToolUse` | `Task`, MCP calls | `capture-action.sh` | Records action asynchronously (no blocking) |
+| `PostToolUse` | `Bash`, `Write`, `Edit`, MCP | `capture-action.sh` | Classifies the action (e.g., `cpp_compile`, `binary_analysis`), queues JSON for the bridge |
+| `Stop` | Always | `stop-analysis.sh` | Surfaces critical warnings; blocks Claude if any are active |
+| `Stop` | Always | Agent prompt | Runs timing regression check against stored baselines |
+
+### 5. Slash commands — `.claude/commands/`
+
+Installed from `loci-plugin/skills/*/SKILL.md` with the slicer CLI path substituted in at install time:
+
+| Command | Purpose |
+|---------|---------|
+| `/loci/analyze` | Full pipeline: compile → extract assembly → measure execution time and energy |
+| `/loci/slice` | Extract assembly blocks and symbols from an ELF binary |
+| `/loci/exec-behavior` | Call the timing MCP tool directly with a CSV of assembly blocks |
+| `/loci/profile-blocks` | Profile individual basic blocks for hotspot identification |
+
+### 6. LOCI context — `.claude/CLAUDE.md`
+
+Copied from `loci-plugin/CLAUDE.md`. Provides Claude with architecture documentation, data-flow diagrams, heuristic tables, and CLI references so it understands the plugin's internals.
+
+### 7. Background daemon — `loci_bridge.py`
+
+Not installed as a system service. Started automatically at each `SessionStart` by `session-lifecycle.sh` and stopped at `SessionEnd`. It:
+
+- Runs **entirely locally** — no outbound HTTP calls.
+- Reads action queue files written by hook scripts.
+- Runs `CppAnalyzer` heuristics against source code and compile flags.
+- Writes warnings, metrics, and the session timeline back to the state directory.
+- Wakes immediately on `SIGUSR1` from hook scripts, or falls back to periodic polling.
+
+---
+
+## File layout after installation
+
+```
+<project-root>/
+├── .mcp.json                      ← MCP server config (Claude Code reads this)
+└── .claude/
+    ├── settings.json              ← hooks merged here (absolute paths)
+    ├── CLAUDE.md                  ← LOCI architecture context for Claude
+    └── commands/
+        ├── analyze.md             ← /loci/analyze slash command
+        ├── slice.md               ← /loci/slice slash command
+        ├── exec-behavior.md       ← /loci/exec-behavior slash command
+        └── profile-blocks.md      ← /loci/profile-blocks slash command
+
+loci-plugin/
+├── .venv/                         ← Python 3.12 venv (slicer + deps)
+├── state/                         ← runtime state (queue, logs, baselines)
+├── hooks/                         ← shell hook scripts called by Claude Code
+├── lib/                           ← bridge daemon, slicer CLI, utilities
+├── skills/                        ← slash command source templates
+├── slicer-wheels/                 ← bundled asmslicer wheel
+└── config/loci.json               ← bridge configuration
 ```
 
-Your project should look like this before setup:
+---
+
+## Installation steps
+
+### 1. Place the plugin
+
+The plugin must sit three directories below the project root so `setup.sh` can locate the project root automatically.
 
 ```
-my-project/
-├── .claude/
-│   └── plugins/
-│       └── loci-plugin/
-│           ├── setup.sh
-│           ├── hooks/
-│           ├── lib/
-│           ├── skills/
-│           ├── slicer-wheels/    ← put wheel here
-│           └── ...
-├── src/
-│   └── main.cpp
-└── ...
+<project-root>/
+└── .claude/
+    └── plugins/
+        └── loci-plugin/    ← plugin lives here
+            ├── setup.sh
+            └── ...
 ```
 
-## 2. Add the asmslicer wheel
+### 2. Add the asmslicer wheel (optional)
 
-Copy the wheel into the `slicer-wheels/` directory:
+Copy the provided `.whl` file into `slicer-wheels/`:
 
 ```bash
 cp loci_service_asmslicer-*.whl .claude/plugins/loci-plugin/slicer-wheels/
 ```
 
-If you don't have the wheel, the plugin still works — you just won't have the slicer CLI. The remote timing backend (loci-plugin) works independently.
+If you skip this, all slash commands and the timing backend still work — only local ELF analysis (assembly extraction, symbol maps, binary diffs) requires the slicer.
 
-## 3. Run setup
+### 3. Run setup
 
 ```bash
 .claude/plugins/loci-plugin/setup.sh
 ```
 
-This will:
-1. Check dependencies (jq, python3, compiler)
-2. If wheels are present: create a Python venv and install the slicer
-3. Detect your project (compiler, build system, sources, binaries)
-4. Create `.mcp.json` at the project root with the MCP server entry
-5. Register hooks in `.claude/settings.json` (with absolute paths)
-6. Install slash commands (`/analyze`, `/slice`) into `.claude/commands/` with the slicer CLI path baked in
+### 4. Restart Claude Code and authorize the MCP server
 
-Expected output (without wheel — slicer disabled, timing backend still works):
+1. Restart Claude Code.
+2. Open any project file and start a conversation.
+3. Claude will prompt you to approve the `loci-plugin` MCP server — click **Allow**.
 
-```
-=========================================
-  LOCI MCP Plugin for Claude Code
-  SW Execution-Aware Analysis
-=========================================
+---
 
-Checking dependencies... OK
-Checking C++ compiler... g++ (Ubuntu 13.3.0) 13.3.0
-Setting permissions... OK
-Creating state directories... OK
-Setting up slicer environment... no wheels in slicer-wheels/ — slicer disabled
-Detecting  project... OK
-  Compiler:   g++
-  Build:      direct
-  Sources:    3 files
-  Binaries:   1 found
-  Assembly:   2 files
-Validating hooks... OK
-Checking LOCI MCP server config... Created
-Registering hooks... OK
-Installing slash commands... OK (2 commands: analyze, slice)
+## Verification
 
-Setup complete!
-```
-
-If you have the wheel, the slicer line shows `OK` and the slash commands are installed with the full slicer CLI path.
-
-## 4. Verify what setup created
-
-After setup, your project root should have these new files:
-
-```
-my-project/
-├── .mcp.json                      ← MCP server config (Claude Code reads this)
-├── .claude/
-│   ├── settings.json              ← hooks registered here (absolute paths)
-│   ├── commands/
-│   │   ├── analyze.md             ← /analyze slash command
-│   │   └── slice.md               ← /slice slash command
-│   └── plugins/
-│       └── loci-plugin/           ← plugin source (unchanged)
-└── ...
-```
-
-Check `.mcp.json`:
 ```bash
+# Hooks registered
+cat .claude/settings.json | jq '.hooks | keys'
+# → ["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop"]
+
+# MCP server configured
 cat .mcp.json | jq .
+
+# Slash commands installed
+ls .claude/commands/
+
+# Slicer venv works
+.claude/plugins/loci-plugin/.venv/bin/python \
+  -c "from loci.service.asmslicer import asmslicer; print('OK')"
 ```
 
-You should see the `loci-plugin` SSE server entry.
-
-Verify the slicer CLI works:
-```bash
-.claude/plugins/loci-plugin/.venv/bin/python .claude/plugins/loci-plugin/lib/slicer_cli.py --help
-```
-
-## 5. Launch Claude Code
-
-```bash
-claude
-```
-
-Verify everything is connected:
+Inside Claude Code:
 - `/mcp` — should list `loci-plugin`
-- Type `/` and look for `analyze` and `slice` in the command list
+- Type `/loci` and look for `analyze`, `slice`, `exec-behavior`, `profile-blocks`
 
 ---
-
-## Using the plugin
-
-### Example project
-
-Say you have this `main.cpp`:
-
-```cpp
-int calculate(int x) {
-  int n = x;
-  n ^= 0xffff;
-  n *= n + 20;
-  n -= 0x1000;
-  n ^= 0x2000;
-  return n;
-}
-
-int main(int argc, char* argv[]) {
-  int a = calculate(argc + 5);
-  int b = calculate(argc + a);
-  int c = calculate(argc + b);
-  int x = a + b + c;
-  return x < 0x2000 ? 1 : 0;
-}
-```
-
-### Scenario 1: Timing analysis with `/analyze`
-
-The fastest path from source to timing prediction. Just tell Claude what function to analyze:
-
-```
-> /analyze calculate
-```
-
-Claude will:
-1. Compile `main.cpp` for the target architecture
-2. Run the slicer CLI to extract `calculate`'s assembly
-3. Pass the assembly to `mcp__loci-plugin__get_assembly_block_exec_behavior`
-4. Report the predicted execution time in microseconds with standard deviation
-
-You can also ask for it conversationally:
-
-```
-> Cross-compile main.cpp for Cortex-M4 and tell me how long calculate() takes to execute
-```
-
-### Scenario 2: Explore an ELF binary with `/slice`
-
-Use the `/slice` skill to inspect a binary without running timing analysis:
-
-```
-> /slice main
-```
-
-Claude will call the slicer CLI to list symbols, show disassembly, and present the structure of the binary. You can ask for specific outputs:
-
-```
-> /slice main — show me the callgraph and basic blocks
-```
-
-### Scenario 3: Extract assembly for specific functions
-
-Ask Claude to run the slicer directly when you need precise control:
-
-```
-> Use the slicer to extract assembly for calculate and main from ./main
-```
-
-Claude runs the slicer CLI with:
-```bash
-<slicer> extract-assembly --elf-path ./main --functions calculate,main
-```
-
-The response includes:
-- Per-function assembly in objdump format
-- Start addresses, sizes, instruction counts
-- `timing_csv` — a pre-formatted CSV ready to pass straight to the timing backend
-- `timing_architecture` — the mapped architecture name for the timing backend
-
-### Scenario 4: Compare two binaries
-
-After making changes and recompiling, diff the old and new binaries:
-
-```
-> Diff ./main_v1 against ./main_v2 to see what changed
-```
-
-Claude runs the slicer CLI to diff and shows you which symbols were added, removed, or modified, with similarity ratios for modified functions.
-
-### Scenario 5: Full pipeline — optimize and measure
-
-This is where the plugin really shines. Ask Claude to optimize a function and measure the impact:
-
-```
-> The calculate function in main.cpp is too slow for our Cortex-M4 target.
-> Optimize it and show me the before/after timing comparison.
-```
-
-Claude will:
-1. Compile the original, extract assembly via the slicer, measure baseline timing
-2. Analyze the assembly for optimization opportunities
-3. Modify the C++ source
-4. Recompile, extract assembly again, measure new timing
-5. Diff the two binaries to show exactly what changed
-6. Report the timing improvement
-
-### Scenario 6: List symbols from a third-party binary
-
-You can point the slicer at any ELF, not just binaries you compiled:
-
-```
-> What functions are in /path/to/firmware.elf?
-```
-
-Claude runs the slicer CLI to extract the full symbol table with names, demangled names, addresses, and sizes.
-
----
-
-## Architecture support
-
-The slicer auto-detects architecture from the ELF binary. You can also specify it explicitly. Either naming convention works:
-
-| Slicer name | Timing backend name | Typical compiler flag |
-|-------------|--------------------|-----------------------|
-| `aarch64`   | `cortex-a53`       | `-march=armv8-a`      |
-| `cortexm`   | `cortex-m4`        | `-mcpu=cortex-m4`     |
-| `tricore`   | `tc399`            | `-mcpu=tc39xx`        |
-
-When you use `extract-assembly`, the response includes `timing_architecture` already mapped to the timing backend name, so the handoff is seamless.
-
-## Available slicer commands
-
-| Command | What it does |
-|---------|-------------|
-| `slice-elf` | Full analysis — pick any combination of: asm, symbols, blocks, segments, callgraph, elfinfo |
-| `extract-assembly` | Per-function assembly formatted for the timing backend, with ready-to-use `timing_csv` |
-| `extract-symbols` | Symbol map: name, demangled name, address, size, namespace |
-| `diff-elfs` | Binary diff: added/removed/modified symbols with similarity ratios |
 
 ## Troubleshooting
 
-**Setup ended early / no `.mcp.json` created** — Older versions of `setup.sh` could crash silently during the slicer venv step if `pip` or `venv` failed. Make sure you have the latest `setup.sh`. It should always complete all steps regardless of whether the slicer wheel is present.
+**No `.mcp.json` created** — Re-run `setup.sh`. It should always complete all steps regardless of slicer wheel availability.
 
-**No MCP servers in `/mcp`** — Check that `.mcp.json` exists at your project root (not inside `.claude/`):
+**No MCP servers in `/mcp`** — Verify `.mcp.json` is at the project root (not inside `.claude/`):
 ```bash
 cat .mcp.json
 ```
-If it's missing, re-run `setup.sh`. If it exists, restart Claude Code (`claude` must be started from the project root).
+If missing, re-run setup. If present, restart Claude Code from the project root.
 
-**No slash commands (`/analyze`, `/slice`)** — Check that `.claude/commands/` has the command files:
-```bash
-ls .claude/commands/
-```
-If empty, re-run `setup.sh`. It copies them from the plugin's `skills/` directory.
+**No slash commands** — Check `.claude/commands/` is populated. Re-run `setup.sh` if empty.
 
-**Hooks not firing** — Check `.claude/settings.json` exists and contains hook entries:
+**Hooks not firing** — Confirm `.claude/settings.json` has hook entries:
 ```bash
 cat .claude/settings.json | jq '.hooks | keys'
 ```
-Should show `["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop"]`.
+Should show all five hook events.
 
-**"no wheels in slicer-wheels/"** during setup — Drop the `.whl` file in `slicer-wheels/` and re-run `setup.sh`. The timing backend still works without the slicer.
+**"no wheels in slicer-wheels/"** — Drop the `.whl` file into `slicer-wheels/` and re-run setup.
 
-**"venv creation failed"** — `python3 -m venv` failed. Check that `python3-venv` is installed:
+**Slicer venv creation failed** — Check the log:
 ```bash
-sudo apt install python3-venv  # Ubuntu/Debian
+cat loci-plugin/state/slicer-setup.log
 ```
 
-**"wheel installed but import failed"** — The wheel may be for a different Python version or platform. Check with:
+**Bridge daemon not starting** — Check:
 ```bash
-.claude/plugins/loci-plugin/.venv/bin/python -c "from loci.service.asmslicer import asmslicer; print('OK')"
+cat loci-plugin/state/bridge.log
+cat loci-plugin/state/hook-errors.log
+ps aux | grep loci_bridge.py
 ```
 
-**Slicer CLI not working** — Verify the CLI is accessible:
-```bash
-.claude/plugins/loci-plugin/.venv/bin/python .claude/plugins/loci-plugin/lib/slicer_cli.py --help
-```
-
-**"ELF file not found"** — The slicer needs an absolute path or a path relative to Claude Code's working directory. Use the full path when in doubt.
-
-**Timing backend unreachable** — The `loci-plugin` server is remote (SSE). Check network access to the URL in `.mcp.json`. The slicer works entirely offline.
+**Timing backend unreachable** — The MCP server is remote (SSE). Check network access to the URL in `.mcp.json`. The slicer works entirely offline.
