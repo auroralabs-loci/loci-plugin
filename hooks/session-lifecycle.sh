@@ -60,8 +60,39 @@ case "$HOOK_EVENT" in
       echo $! > "$BRIDGE_PID_FILE"
     fi
 
-    # Provide session context to Claude
-    echo "LOCI execution-aware monitoring active for session ${SESSION_ID:0:8}..."
+    # Inject detected project context for Claude
+    ARCH_INFO=""
+    if [ "$DETECTED_CONTEXT" != "{}" ]; then
+      ARCH_INFO=$(echo "$DETECTED_CONTEXT" | jq -r '"Target: \(.architecture // "unknown"), Compiler: \(.compiler // "unknown"), Build: \(.build_system // "unknown")"' 2>/dev/null || echo "")
+    fi
+
+    LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/slicer_cli.py"
+
+    # Provide execution-aware context to Claude
+    cat <<LOCI_CONTEXT
+LOCI execution-aware plugin active. Session ${SESSION_ID:0:8}.
+${ARCH_INFO:+$ARCH_INFO}
+
+## When to use LOCI
+- After writing/modifying C, C++, or Rust code: compile and measure execution time
+- After compilation: extract assembly and call mcp__loci-plugin__get_assembly_block_exec_behavior
+- When optimizing: compare before/after timing to detect regressions
+
+## Partial processing with .o files
+You do NOT need a fully linked binary. Compile individual source files with -c to produce .o object files, then:
+- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name --arch aarch64
+- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o --arch aarch64
+- Only measure changed/added functions — skip unchanged code entirely
+This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
+
+## Mindset
+Every line of C++ is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
+
+## Available tools
+- /loci/analyze — full workflow: compile, extract assembly, measure
+- ${LOCI_ASM_ANALYZE} — ELF/object file slicer (extract-assembly, diff-elfs, slice-elf)
+- mcp__loci-plugin__get_assembly_block_exec_behavior — timing/energy predictions
+LOCI_CONTEXT
     ;;
 
   SessionEnd)
