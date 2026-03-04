@@ -1,12 +1,33 @@
 # LOCI Plugin for Claude Code
 
-Assembly-level execution timing and energy prediction for embedded C++ development. Hooks into Claude Code to capture your build workflow and surface performance warnings automatically.
+Ground your AI coding agent with execution awareness. No instrumentation. No runtime required.
 
-## What it does
+## The Problem
 
-**Local (hooks + bridge)** — captures every compilation, binary analysis, and source edit. A local Python bridge runs heuristic analysis and injects warnings into Claude's context before it touches your files.
+AI coding agents are in your stack — but they're operating without execution awareness. They ship async logic that works in theory but blocks in production, generate massive diffs with fabricated performance claims, and miss security edge cases invisible to standard review. Each incorrect first-pass drives more cycles, corrections, and retries — indefinitely.
+
+## What LOCI Does
+
+LOCI adds the missing layer: **execution awareness**. It gives your AI agent bounded, evidence-based constraints grounded in predictions based on real measurements from compiled binaries — eliminating hallucinated performance claims and overconfident patches.
 
 **Remote (LOCI MCP server)** — Claude connects directly to the LOCI server to predict execution time (ns) and energy (Watt-seconds) for assembly blocks on real embedded hardware.
+
+
+## How It Works
+
+1. **Plan and Think with LOCI** — LOCI skills are provided to the AI coding agent during engineering planning and thinking
+2. **Execution Awareness** — From binary analysis, the agent reasons about how code behaves under real software runs and workloads
+3. **Ground Your Agent** — The agent receives bounded, evidence-based constraints of execution behaviout — eliminating hallucinated performance claims
+
+
+## Typical example workflow
+
+```
+1. Compile with target flags:  g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
+2. Extract assembly:           objdump -d sensor | sed -n '/<my_func>/,/^$/p'
+3. Call get_assembly_block_exec_behavior with architecture: "cortex-m4"
+4. LOCI returns:               execution_time_ns=1240, std_dev_ns=85, energy_ws=0.00012
+```
 
 ## Installation
 
@@ -39,33 +60,7 @@ Claude calls `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
 | `cortex-m4` | ARM Cortex-M4 — microcontrollers, RTOS |
 | `tc399` | Infineon AURIX TC399 — automotive |
 
-## Typical workflow
 
-```
-1. Compile with target flags:  g++ -O2 -mcpu=cortex-m4 -o sensor sensor.cpp
-2. Extract assembly:           objdump -d sensor | sed -n '/<my_func>/,/^$/p'
-3. Call get_assembly_block_exec_behavior with architecture: "cortex-m4"
-4. LOCI returns:               execution_time_ns=1240, std_dev_ns=85, energy_ws=0.00012
-```
-
-## Local heuristics (no server required)
-
-The bridge flags these patterns automatically:
-
-| Pattern | Severity |
-|---------|----------|
-| `virtual` in hot-path function (update/tick/render/process) | warning |
-| Heap allocation inside a loop | warning |
-| `try`/`catch`/`throw` inside a loop | warning |
-| `reinterpret_cast` or `const_cast` | warning |
-| Stack array > 10,000 elements | warning |
-| No `-O` flag on compile | warning |
-| `std::endl` usage | info |
-| `-g -O0` together | info |
-| No `-march` flag | info |
-| `rm -rf` in shell command | **critical** |
-
-Critical warnings block Claude from continuing until acknowledged.
 
 ## Configuration
 
