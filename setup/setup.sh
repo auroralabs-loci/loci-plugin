@@ -27,6 +27,12 @@ _auto_install() {
     sudo apt-get install -y "$pkg"
   elif command -v dnf >/dev/null 2>&1; then
     sudo dnf install -y "$pkg"
+  elif command -v choco >/dev/null 2>&1; then
+    choco install -y "$pkg"
+  elif command -v winget >/dev/null 2>&1; then
+    winget install --accept-package-agreements --accept-source-agreements "$pkg"
+  elif command -v scoop >/dev/null 2>&1; then
+    scoop install "$pkg"
   else
     return 1
   fi
@@ -49,6 +55,15 @@ if ! command -v uv >/dev/null 2>&1; then
   echo -e "${YELLOW}uv not found — installing...${NC}"
   if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
     brew install uv
+  elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+    if command -v winget >/dev/null 2>&1; then
+      winget install --id=astral-sh.uv --accept-package-agreements --accept-source-agreements
+    elif command -v choco >/dev/null 2>&1; then
+      choco install -y uv
+    else
+      powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+    fi
+    export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$LOCALAPPDATA/uv/bin:$PATH"
   else
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
@@ -93,6 +108,17 @@ WHEEL_DIR="${PLUGIN_DIR}/asm-analyze-wheels"
 ASM_ANALYZE_AVAILABLE=false
 ASM_ANALYZE_LOG="${PLUGIN_DIR}/state/asm-analyze-setup.log"
 
+# Cross-platform venv python path
+_venv_python() {
+  if [ -x "${VENV_DIR}/bin/python" ]; then
+    echo "${VENV_DIR}/bin/python"
+  elif [ -x "${VENV_DIR}/Scripts/python.exe" ]; then
+    echo "${VENV_DIR}/Scripts/python.exe"
+  else
+    echo "python"
+  fi
+}
+
 install_asm_analyze() {
   : > "$ASM_ANALYZE_LOG"
 
@@ -110,7 +136,7 @@ install_asm_analyze() {
 
   # The wheel may have undeclared dependencies — detect and install them
   for _attempt in 1 2 3 4 5; do
-    MISSING=$("${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>&1 \
+    MISSING=$("$(_venv_python)" -c "from loci.service.asmslicer import asmslicer" 2>&1 \
       | grep "ModuleNotFoundError" | head -1 \
       | sed "s/.*No module named '\([^']*\)'.*/\1/")
     if [ -z "$MISSING" ]; then
@@ -121,7 +147,7 @@ install_asm_analyze() {
   done
 
   # Final verify after all deps installed
-  "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>>"$ASM_ANALYZE_LOG" || return 1
+  "$(_venv_python)" -c "from loci.service.asmslicer import asmslicer" 2>>"$ASM_ANALYZE_LOG" || return 1
 }
 
 echo -n "Setting up asm-analyze environment... "
@@ -130,7 +156,7 @@ if ls "${WHEEL_DIR}"/*.whl 1>/dev/null 2>&1; then
   WHEEL_HASH=$(md5 -q "${WHEEL_DIR}"/*.whl 2>/dev/null || md5sum "${WHEEL_DIR}"/*.whl 2>/dev/null | awk '{print $1}')
   MARKER_FILE="${VENV_DIR}/.loci-wheel-hash"
   if [ -f "$MARKER_FILE" ] && [ "$(cat "$MARKER_FILE" 2>/dev/null)" = "$WHEEL_HASH" ] \
-      && "${VENV_DIR}/bin/python" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
+      && "$(_venv_python)" -c "from loci.service.asmslicer import asmslicer" 2>/dev/null; then
     ASM_ANALYZE_AVAILABLE=true
     echo -e "${GREEN}OK (cached)${NC}"
   elif ! install_asm_analyze; then
