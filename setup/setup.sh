@@ -47,9 +47,14 @@ if ! command -v jq >/dev/null 2>&1; then
   echo -e "${GREEN}jq installed${NC}"
 fi
 
-echo -e "${YELLOW}Installing binutils...${NC}"
-_auto_install binutils
-echo -e "${GREEN}binutils installed${NC}"
+if ! command -v objdump >/dev/null 2>&1 || ! command -v readelf >/dev/null 2>&1; then
+  echo -e "${YELLOW}binutils not found — installing...${NC}"
+  if ! _auto_install binutils; then
+    echo -e "${YELLOW}Failed to install binutils. Some ELF analysis features may be unavailable.${NC}"
+  else
+    echo -e "${GREEN}binutils installed${NC}"
+  fi
+fi
 
 if ! command -v uv >/dev/null 2>&1; then
   echo -e "${YELLOW}uv not found — installing...${NC}"
