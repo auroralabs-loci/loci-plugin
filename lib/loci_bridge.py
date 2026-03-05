@@ -146,24 +146,24 @@ class CppAnalyzer:
     ]
 
     COMPILE_WARNINGS = {
-        "missing_optimization": {
-            "check": lambda flags: not any(f.startswith("-O") for f in flags),
-            "severity": "warning",
-            "category": "performance",
-            "message": "No optimization flag — binary analysis requires -O2/-O3 for meaningful results",
-        },
-        "debug_in_perf": {
-            "check": lambda flags: "-g" in flags and "-O0" in flags,
-            "severity": "info",
-            "category": "performance",
-            "message": "Debug build (-g -O0) — performance analysis needs release flags (-O2/-O3)",
-        },
-        "no_march": {
-            "check": lambda flags: not any(f.startswith("-march") for f in flags),
-            "severity": "info",
-            "category": "optimization",
-            "message": "No -march flag — binary won't use CPU-specific instructions (AVX/SSE)",
-        },
+        # "missing_optimization": {
+        #     "check": lambda flags: not any(f.startswith("-O") for f in flags),
+        #     "severity": "warning",
+        #     "category": "performance",
+        #     "message": "No optimization flag — binary analysis requires -O2/-O3 for meaningful results",
+        # },
+        # "debug_in_perf": {
+        #     "check": lambda flags: "-g" in flags and "-O0" in flags,
+        #     "severity": "info",
+        #     "category": "performance",
+        #     "message": "Debug build (-g -O0) — performance analysis needs release flags (-O2/-O3)",
+        # },
+        # "no_march": {
+        #     "check": lambda flags: not any(f.startswith("-march") for f in flags),
+        #     "severity": "info",
+        #     "category": "optimization",
+        #     "message": "No -march flag — binary won't use CPU-specific instructions (AVX/SSE)",
+        # },
     }
 
     @classmethod
