@@ -37,7 +37,7 @@ Claude calls `mcp__loci-plugin__get_assembly_block_exec_behavior` with:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `csv_text` | string | CSV with columns `function_name` and `assembly_code` |
+| `csv_text` | string | CSV with columns `function_name` (column value include blocks start end value apended to function name) and `assembly_code` |
 | `architecture` | string | `aarch64`, `armv7e-m`, or `tc3xx` |
 
 **Returns:** `execution_time_ns`, `std_dev_ns`, `energy_ws` per function
