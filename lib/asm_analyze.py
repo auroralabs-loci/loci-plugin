@@ -25,6 +25,8 @@ import tempfile
 import traceback
 from pathlib import Path
 
+import pandas as pd
+
 # ---------------------------------------------------------------------------
 # Architecture mapping to timing backend
 # ---------------------------------------------------------------------------
@@ -492,6 +494,33 @@ def blocks_to_timing(blocks_file: str,
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+def extract_cfg(elf_path, architecture, functions):
+    arch = resolve_arch(architecture)
+    result = run_analysis(elf_path, arch)
+    detected_arch = result["arch"]
+    files = result["files"]
+
+    blocks_text = files.get("blocks")
+
+    string_io_object = io.StringIO(blocks_text.strip())  # strip() removes leading/trailing whitespace
+    functions_list = []
+    if functions is not None and functions != "":
+        functions_list = functions.split(",")
+
+    # Load the data into a DataFrame
+    df = pd.read_csv(string_io_object, sep=',')
+
+    from loci.service.asmslicer.cfg_formatter import df_to_cfg_text
+
+    df_to_cfg_text(
+        df=df,
+        functions=functions_list,
+        arch=detected_arch,
+    )
+
+    return "success"
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="asm-analyze",
@@ -550,6 +579,16 @@ def main():
     p_blocks.add_argument("--functions", default=None,
                           help="Comma-separated function names to filter")
 
+    # extract-cfg
+    p_cfg = subparsers.add_parser(
+        "extract-cfg",
+        help="Extract CFG (function Control Flow Graph) map from an ELF binary",
+    )
+    p_cfg.add_argument("--elf-path", required=True, help="Path to the ELF binary")
+    p_cfg.add_argument("--arch", default=None, help="Target architecture (auto-detected if omitted)")
+    p_cfg.add_argument("--functions", required=False,
+                           help="Comma-separated function names to extract (omit to extract all functions)")
+
     args = parser.parse_args()
 
     try:
@@ -586,6 +625,12 @@ def main():
                 elf_path=args.elf_path,
                 comparing_elf_path=args.comparing_elf_path,
                 architecture=args.arch,
+            )
+        elif args.command == "extract-cfg":
+            result = extract_cfg(
+                elf_path=args.elf_path,
+                architecture=args.arch,
+                functions=args.functions,
             )
         else:
             result = {"error": f"Unknown command: {args.command}"}
