@@ -131,7 +131,7 @@ install_asm_analyze() {
     uv venv "$VENV_DIR" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
   fi
 
-  VIRTUAL_ENV="$VENV_DIR" uv pip install loci_service_asmslicer --find-links "${WHEEL_DIR}" --no-index >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
+  VIRTUAL_ENV="$VENV_DIR" uv pip install loci_service_asmslicer --find-links "${WHEEL_DIR}" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
   VIRTUAL_ENV="$VENV_DIR" uv pip install unicorn >> "$ASM_ANALYZE_LOG" 2>&1 || true
 
   # The wheel may have undeclared dependencies — detect and install them
