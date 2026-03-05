@@ -7,7 +7,11 @@
     "plugins": [
         {
             "name": "loci-plugin",
-            "source": ".",
+            "source": {
+                "source": "url",
+                "url": "https://github.com/auroralabs-loci/loci-plugin.git",
+                "ref": "production"
+            },
             "description": "LOCI Execution-Aware Plugin for compiled binaries (C, C++, Rust, GoLang) — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis. Includes local ELF binary asm-analyze CLI for symbols, assembly, blocks, callgraph, and diff.",
             "version": "0.9.7",
             "author": {
