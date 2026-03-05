@@ -517,7 +517,7 @@ def extract_cfg(elf_path, architecture, functions):
     from loci.service.asmslicer.cfg_formatter import df_to_cfg_text
 
     df_to_cfg_text(
-        df=df,
+        work=df,
         functions=functions_list,
         arch=detected_arch,
     )
