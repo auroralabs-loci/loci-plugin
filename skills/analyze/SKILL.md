@@ -17,22 +17,42 @@ loci-plugin/.venv/bin/python3 loci-plugin/lib/asm_analyze.py extract-assembly \
 ```
 The output is JSON. Use the `timing_csv` and `timing_architecture` fields from it in step 3.
 
+## Step 0: Resolve Architecture and Toolchain
+
+Determine which LOCI target architecture and compiler to use:
+
+1. **User's own compilation** — if the user already compiled targeting a LOCI architecture (aarch64, armv7e-m, tc3xx), reuse their binary. Skip directly to assembly extraction (step 2 of the full compilation path).
+2. **`state/pending-regression-check.json`** — if it exists and contains an `architecture` field, use that architecture.
+3. **No context** — ask the user which target, or default to aarch64.
+
+### Cross-compilation defaults
+
+Use these defaults only when the user has no existing build:
+
+| Architecture | Compiler | Flags | Build dir |
+|---|---|---|---|
+| aarch64 | `aarch64-linux-gnu-g++` | `-O2 -march=armv8-a` | `.loci-build/aarch64/` |
+| cortexm | `arm-none-eabi-g++` | `-O2 -mcpu=cortex-m4 -mthumb` | `.loci-build/cortexm/` |
+| tricore | `tricore-elf-g++` | `-O2 -mcpu=tc39xx` | `.loci-build/tricore/` |
+
+In all steps below, replace `<arch>`, `<compiler>`, and `<flags>` with values from the resolved architecture.
+
 ## Incremental Path (preferred)
 
-If a previous `.o` exists in `.loci-build/aarch64/`, use incremental compilation:
+If a previous `.o` exists in `.loci-build/<arch>/`, use incremental compilation:
 
 1. Save the existing `.o` as `.o.prev`
 2. Compile only the changed source with `-c`:
    ```
-   aarch64-linux-gnu-g++ -O2 -march=armv8-a -c <source> -o .loci-build/aarch64/<basename>.o
+   <compiler> <flags> -c <source> -o .loci-build/<arch>/<basename>.o
    ```
 3. Diff `.o.prev` vs `.o` to find changed functions:
    ```
-   ${LOCI_ASM_ANALYZE} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch aarch64
+   ${LOCI_ASM_ANALYZE} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch <arch>
    ```
 4. Extract assembly for only `modified`/`added` functions:
    ```
-   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path .o --functions <changed_funcs> --arch aarch64
+   ${LOCI_ASM_ANALYZE} extract-assembly --elf-path .o --functions <changed_funcs> --arch <arch>
    ```
 5. Skip to step 3 (MCP call) below.
 
@@ -40,9 +60,9 @@ If no `.o` exists yet, fall through to full compilation.
 
 ## Full Compilation Path
 
-1. Cross-compile the target file for aarch64:
+1. Cross-compile the target file for the resolved architecture:
    ```
-   aarch64-linux-gnu-g++ -O2 -march=armv8-a -o <binary> <source>
+   <compiler> <flags> -o <binary> <source>
    ```
 2. Extract assembly with per-block granularity:
    ```

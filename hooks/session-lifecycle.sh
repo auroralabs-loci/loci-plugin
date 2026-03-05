@@ -55,16 +55,24 @@ case "$HOOK_EVENT" in
 
     # Inject detected project context for Claude
     ARCH_INFO=""
+    LOCI_COMPATIBLE="false"
+    LOCI_TARGET=""
+    DETECTED_ARCH=""
     if [ "$DETECTED_CONTEXT" != "{}" ]; then
       ARCH_INFO=$(echo "$DETECTED_CONTEXT" | jq -r '"Target: \(.architecture // "unknown"), Compiler: \(.compiler // "unknown"), Build: \(.build_system // "unknown")"' 2>/dev/null || echo "")
+      LOCI_COMPATIBLE=$(echo "$DETECTED_CONTEXT" | jq -r '.loci_compatible // false' 2>/dev/null || echo "false")
+      LOCI_TARGET=$(echo "$DETECTED_CONTEXT" | jq -r '.loci_target // empty' 2>/dev/null || echo "")
+      DETECTED_ARCH=$(echo "$DETECTED_CONTEXT" | jq -r '.architecture // "unknown"' 2>/dev/null || echo "unknown")
     fi
 
     LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
 
-    # Provide execution-aware context to Claude
-    cat <<LOCI_CONTEXT
+    if [ "$LOCI_COMPATIBLE" = "true" ] && [ -n "$LOCI_TARGET" ]; then
+      # Provide execution-aware context to Claude
+      cat <<LOCI_CONTEXT
 LOCI execution-aware plugin active. Session ${SESSION_ID:0:8}.
 ${ARCH_INFO:+$ARCH_INFO}
+LOCI target: ${LOCI_TARGET}
 
 ## When to use LOCI
 - After writing/modifying C, C++, or Rust code: compile and measure execution time
@@ -73,8 +81,8 @@ ${ARCH_INFO:+$ARCH_INFO}
 
 ## Partial processing with .o files
 You do NOT need a fully linked binary. Compile individual source files with -c to produce .o object files, then:
-- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name --arch aarch64
-- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o --arch aarch64
+- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name --arch ${LOCI_TARGET}
+- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o --arch ${LOCI_TARGET}
 - Only measure changed/added functions — skip unchanged code entirely
 This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
 
@@ -86,6 +94,11 @@ Every line of C++ , C or RUST is an instruction sequence with real hardware cons
 - ${LOCI_ASM_ANALYZE} — ELF/object file slicer (extract-assembly, diff-elfs, slice-elf)
 - mcp__loci-plugin__get_assembly_block_exec_behavior — timing/energy predictions
 LOCI_CONTEXT
+    else
+      cat <<LOCI_NOTICE
+LOCI plugin active but project targets \`${DETECTED_ARCH}\` which is not a supported LOCI target (aarch64, armv7e-m, tc3xx). LOCI analysis requires cross-compilation to a supported architecture.
+LOCI_NOTICE
+    fi
     ;;
 
   SessionEnd)

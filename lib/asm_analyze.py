@@ -32,8 +32,8 @@ import pandas as pd
 # ---------------------------------------------------------------------------
 ARCH_TO_TIMING = {
     "aarch64": "aarch64",
-    "cortexm": "cortexm",
-    "tricore": "tricore",
+    "cortexm": "armv7e-m",
+    "tricore": "tc3xx",
 }
 TIMING_TO_ARCH = {v: k for k, v in ARCH_TO_TIMING.items()}
 
@@ -42,12 +42,16 @@ ARCH_ALIASES = {
     "aarch64": "aarch64",
     "arm64": "aarch64",
     "cortex-a53": "aarch64",
+    "armv8-a": "aarch64",
     "cortexm": "cortexm",
     "cortex-m": "cortexm",
     "cortex-m4": "cortexm",
+    "armv7e-m": "cortexm",
     "thumb": "cortexm",
     "tricore": "tricore",
     "tc399": "tricore",
+    "tc39xx": "tricore",
+    "tc3xx": "tricore",
 }
 
 
