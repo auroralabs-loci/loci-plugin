@@ -2,6 +2,27 @@
     "name": "loci-plugin",
     "owner": {
         "name": "AuroraLabs",
-        "email": "info@auroralabs.com"
-    }
+        "email": "devtools@auroralabs.com"
+    },
+    "plugins": [
+        {
+            "name": "loci-plugin",
+            "source": {
+                "source": "github",
+                "repo": "auroralabs-loci/loci-plugin",
+                "ref": "production"
+            },
+            "description": "Automatic code formatting on save",
+            "version": "0.9.7",
+            "author": {
+                "name": "AuroraLabs"
+            },
+            "mcpServers": {
+                "loci": {
+                    "type": "http",
+                    "url": "https://dev.local.mcp.loci-dev.net/mcp"
+                }
+            }
+        }
+    ]
 }
