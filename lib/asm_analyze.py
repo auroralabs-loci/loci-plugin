@@ -51,7 +51,6 @@ ARCH_ALIASES = {
     "tricore": "tricore",
     "tc399": "tricore",
     "tc3xx": "tricore",
-    "tc3xx": "tricore",
 }
 
 
