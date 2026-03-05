@@ -1,6 +1,5 @@
 {
   "name": "loci",
-  "version": "1.2.2",
   "description": "LOCI Execution-Aware Plugin for compiled binaries (C, C++, Rust, GoLang) — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis. Includes local ELF binary asm-analyze CLI for symbols, assembly, blocks, callgraph, and diff.",
   "author": {
     "name": "AuroraLabs"
