@@ -182,7 +182,7 @@ CONFIG_JSON=$(jq -n \
     "analysis_timeout": ($timeout | tonumber),
     "regression_threshold": ($threshold | tonumber),
     "enabled": true,
-    "_comment": "The LOCI MCP server is configured in .mcp.json at project root. Claude Code connects to it directly. This config is for the local hook bridge."
+    "_comment": "The LOCI MCP server is configured in .mcp.json at project root. Claude Code connects to it directly."
   }')
 
 echo "$CONFIG_JSON" > "$CONFIG_FILE"
@@ -210,17 +210,7 @@ mkdir -p "$STATE_DIR"
 
 # Initialize state files
 jq -n '{"warnings": []}' > "${STATE_DIR}/loci-warnings.json"
-jq -n '{}' > "${STATE_DIR}/loci-context.json"
 [ -f "${STATE_DIR}/loci-baselines.json" ] || jq -n '{}' > "${STATE_DIR}/loci-baselines.json"
-jq -n '{
-  "actions_processed": 0,
-  "insights_generated": 0,
-  "warnings_active": 0,
-  "compilations_tracked": 0,
-  "binaries_tracked": 0,
-  "session_start": null,
-  "last_analysis": null
-}' > "${STATE_DIR}/loci-metrics.json"
 
 echo -e "${GREEN}✓${NC} State directory initialized at $STATE_DIR"
 
@@ -252,7 +242,7 @@ echo "4. View execution graph:"
 echo "   python3 ${PLUGIN_DIR}/lib/task_tracker.py --state-dir ${STATE_DIR} --graph"
 echo ""
 echo "5. Check for issues:"
-echo "   cat ${STATE_DIR}/bridge.log"
+echo "   cat ${STATE_DIR}/hook-errors.log"
 echo ""
 
 echo "Documentation: ${PLUGIN_DIR}/../../README.md"

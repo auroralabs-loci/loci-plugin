@@ -7,7 +7,6 @@ Tracks hook overhead, LOCI server performance, and provides system health metric
 
 import json
 import os
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,63 +17,7 @@ import re
 class HookMonitor:
     def __init__(self, state_dir: Path):
         self.state_dir = state_dir
-        self.metrics_file = state_dir / "loci-metrics.json"
-        self.bridge_log = state_dir / "bridge.log"
         self.actions_log = state_dir / "loci-actions.log"
-
-    def get_metrics(self) -> Dict[str, Any]:
-        """Load current metrics from file."""
-        if not self.metrics_file.exists():
-            return {}
-        try:
-            with open(self.metrics_file) as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error reading metrics: {e}")
-            return {}
-
-    def get_bridge_status(self) -> Dict[str, Any]:
-        """Check if LOCI bridge process is running."""
-        pid_file = self.state_dir / "bridge.pid"
-        status = {
-            "running": False,
-            "pid": None,
-            "memory_mb": 0,
-            "cpu_percent": 0,
-        }
-
-        if pid_file.exists():
-            try:
-                with open(pid_file) as f:
-                    pid = int(f.read().strip())
-                    status["pid"] = pid
-
-                    # Check if process is running
-                    result = subprocess.run(
-                        ["ps", "-p", str(pid)],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode == 0:
-                        status["running"] = True
-
-                        # Get process info (macOS/Linux compatible)
-                        ps_result = subprocess.run(
-                            ["ps", "-p", str(pid), "-o", "rss,%cpu"],
-                            capture_output=True,
-                            text=True,
-                        )
-                        if ps_result.returncode == 0:
-                            lines = ps_result.stdout.strip().split('\n')
-                            if len(lines) > 1:
-                                parts = lines[1].split()
-                                if len(parts) >= 2:
-                                    status["memory_mb"] = int(parts[0]) // 1024
-                                    status["cpu_percent"] = float(parts[1])
-            except Exception as e:
-                pass
-
-        return status
 
     def get_hook_stats(self) -> Dict[str, Any]:
         """Analyze hook activity from action log."""
@@ -230,7 +173,6 @@ class HookMonitor:
             "hook_frequency": "unknown",
         }
 
-        metrics = self.get_metrics()
         hook_stats = self.get_hook_stats()
 
         if hook_stats["total_actions"] > 0:
@@ -262,18 +204,6 @@ class HookMonitor:
         print("\n" + "=" * 70)
         print("LOCI HOOK PERFORMANCE MONITOR")
         print("=" * 70 + "\n")
-
-        # Bridge Status
-        print("BRIDGE PROCESS")
-        print("-" * 70)
-        bridge_status = self.get_bridge_status()
-        if bridge_status["running"]:
-            print(f"  Status:   ✓ Running (PID {bridge_status['pid']})")
-            print(f"  Memory:   {bridge_status['memory_mb']} MB")
-            print(f"  CPU:      {bridge_status['cpu_percent']}%")
-        else:
-            print(f"  Status:   ✗ Not running")
-        print()
 
         # Hook Activity
         print("HOOK ACTIVITY")
@@ -331,19 +261,6 @@ class HookMonitor:
             print(f"  By Category:")
             for cat, count in sorted(warn_stats["warnings_by_category"].items(), key=lambda x: x[1], reverse=True)[:5]:
                 print(f"    {cat:20s}: {count:3d}")
-        print()
-
-        # Metrics
-        print("SYSTEM METRICS")
-        print("-" * 70)
-        metrics = self.get_metrics()
-        if metrics:
-            print(f"  Actions Processed:  {metrics.get('actions_processed', 0)}")
-            print(f"  Insights Generated: {metrics.get('insights_generated', 0)}")
-            print(f"  Compilations:       {metrics.get('compilations_tracked', 0)}")
-            print(f"  Binaries Tracked:   {metrics.get('binaries_tracked', 0)}")
-            if metrics.get("last_analysis"):
-                print(f"  Last Analysis:      {metrics.get('last_analysis')}")
         print()
 
         print("=" * 70 + "\n")
@@ -410,7 +327,6 @@ def main():
     if args.json:
         # Output all stats as JSON
         output = {
-            "bridge": monitor.get_bridge_status(),
             "hooks": monitor.get_hook_stats(),
             "overhead": monitor.get_hook_overhead(),
             "warnings": monitor.get_warning_stats(),

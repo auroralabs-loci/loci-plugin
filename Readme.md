@@ -63,7 +63,6 @@ Interactive wizard: `./loci-plugin/scripts/configure.sh`
 ```bash
 cat loci-plugin/state/loci-warnings.json | jq .   # active warnings
 cat loci-plugin/state/hook-errors.log              # hook failures
-tail -20 loci-plugin/state/bridge.log              # bridge log
 
 python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --status
 python3 loci-plugin/lib/task_tracker.py --state-dir loci-plugin/state --hot-files
@@ -72,7 +71,7 @@ python3 loci-plugin/scripts/monitor-hooks.py
 
 ## Troubleshooting
 
-**Warnings not appearing:** Check bridge is running: `ps aux | grep loci_bridge`
+**Warnings not appearing:** Check `state/loci-warnings.json` exists and contains active warnings
 
 **MCP connection failed:** The server uses SSE — test with `curl -H "Accept: text/event-stream" <url>`, not `curl -I`
 
@@ -81,7 +80,6 @@ python3 loci-plugin/scripts/monitor-hooks.py
 ## Extending
 
 - **Custom action types:** Edit `classify_action()` in `hooks/capture-action.sh`
-- **Custom heuristics:** Add to `CppAnalyzer.PERF_PATTERNS` or `COMPILE_WARNINGS` in `lib/loci_bridge.py`
 
 ---
 

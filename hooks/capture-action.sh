@@ -9,10 +9,9 @@ set +e
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${PLUGIN_DIR}/state"
 LOG_FILE="${STATE_DIR}/loci-actions.log"
-QUEUE_DIR="${STATE_DIR}/queue"
 ERROR_LOG="${STATE_DIR}/hook-errors.log"
 
-mkdir -p "$STATE_DIR" "$QUEUE_DIR"
+mkdir -p "$STATE_DIR"
 
 # Error handling function
 log_error() {
@@ -254,60 +253,8 @@ if ! echo "$ENRICHED_RECORD" >> "$LOG_FILE" 2>/dev/null; then
     log_error "Failed to write to action log"
 fi
 
-# Queue for bridge processing with error handling
-QUEUE_FILE="${QUEUE_DIR}/${TIMESTAMP//[:.]/-}_${TOOL_NAME}.json"
-if ! echo "$ENRICHED_RECORD" > "$QUEUE_FILE" 2>/dev/null; then
-    log_error "Failed to queue action: $QUEUE_FILE"
-fi
-
-# Signal bridge if running (gracefully handle if bridge is not running)
-BRIDGE_PID_FILE="${STATE_DIR}/bridge.pid"
-if [ -f "$BRIDGE_PID_FILE" ]; then
-    BRIDGE_PID=$(cat "$BRIDGE_PID_FILE" 2>/dev/null || echo "")
-    if [ -n "$BRIDGE_PID" ] && kill -0 "$BRIDGE_PID" 2>/dev/null; then
-        kill -USR1 "$BRIDGE_PID" 2>/dev/null || true
-    fi
-fi
-
-# For PreToolUse: inject LOCI warnings into Claude's context
-if [ "$HOOK_EVENT" = "PreToolUse" ]; then
-  WARNINGS_FILE="${STATE_DIR}/loci-warnings.json"
-  if [ -f "$WARNINGS_FILE" ]; then
-    while IFS= read -r file; do
-      if [ -n "$file" ]; then
-        WARNING=$(jq -r --arg f "$file" '
-          .warnings[]? | select(.file == $f and .active == true) | .message
-        ' "$WARNINGS_FILE" 2>/dev/null || echo "")
-        if [ -n "$WARNING" ]; then
-          if jq -n --arg msg "LOCI Warning: $WARNING" '{
-            hookSpecificOutput: {
-              hookEventName: "PreToolUse",
-              "additionalContext": $msg + " C++ file changed. Call mcp__loci-plugin__get_assembly_block_exec_behavior to analyze execution behavior for the modified function."
-            }
-          }' 2>/dev/null; then
-            exit 0
-          fi
-        fi
-      fi
-    done < <(echo "$FILES_INVOLVED" | jq -r '.[]' 2>/dev/null || true)
-  fi
-fi
-
-# For PostToolUse: queue binary-producing actions for LOCI deep analysis
+# For PostToolUse: track binary-producing actions
 if [ "$HOOK_EVENT" = "PostToolUse" ]; then
-  case "$ACTION_TYPE" in
-    cpp_compile|cpp_build|cpp_link|cpp_source_modification|assembly_modification|binary_analysis|binary_diff|loci_asm_analyze_tool)
-      ANALYSIS_QUEUE="${STATE_DIR}/analysis-queue"
-      if mkdir -p "$ANALYSIS_QUEUE" 2>/dev/null; then
-        if ! echo "$ENRICHED_RECORD" > "${ANALYSIS_QUEUE}/${TIMESTAMP//[:.]/-}.json" 2>/dev/null; then
-          log_error "Failed to queue for analysis: $ACTION_TYPE"
-        fi
-      else
-        log_error "Failed to create analysis queue directory"
-      fi
-      ;;
-  esac
-
   # Write pending regression check when a compile produced an architecture-targeted binary
   if [ "$ACTION_TYPE" = "cpp_compile" ] || [ "$ACTION_TYPE" = "cpp_build" ]; then
     ARCH_FLAG=$(echo "$COMPILER_FLAGS" | jq -r '.[] | select(startswith("-march=") or startswith("-mcpu="))' 2>/dev/null | head -1 || true)

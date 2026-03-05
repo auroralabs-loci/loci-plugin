@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LOCI is a Claude Code plugin that adds execution-aware C++ analysis for embedded systems. It has two sides:
 
-- **Local** — shell hooks + a Python bridge daemon that capture build actions, run heuristic analysis, and inject warnings into Claude's context
+- **Local** — shell hooks that capture build actions, classify C++ engineering events, and manage session context
 - **Remote** — an SSE-based MCP server that predicts execution time (ns), energy (Ws), and std deviation for assembly on embedded hardware (Cortex-A53, Cortex-M4, TriCore TC399)
 
 ## Setup & Installation
@@ -24,9 +24,8 @@ Setup installs jq, binutils, uv automatically. Creates `.venv/` with Python 3.12
 
 ```
 Claude tool use → Hook fires (capture-action.sh) → Classify action type
-→ Queue JSON to state/queue/ → Bridge daemon (loci_bridge.py) picks up
-→ Runs CppAnalyzer heuristics → Writes warnings to state/loci-warnings.json
-→ Stop hook injects warnings back into Claude's context
+→ Log action to state/loci-actions.log → Track compilation artifacts
+→ Stop hook surfaces any active warnings from state/loci-warnings.json
 ```
 
 ### Key Components
@@ -34,9 +33,8 @@ Claude tool use → Hook fires (capture-action.sh) → Classify action type
 | Component | File | Role |
 |-----------|------|------|
 | Action capture | `hooks/capture-action.sh` | Intercepts all tool uses, classifies C++ actions |
-| Session lifecycle | `hooks/session-lifecycle.sh` | Starts/stops bridge daemon, manages session manifests |
-| Stop analysis | `hooks/stop-analysis.sh` | Blocks Claude on critical warnings |
-| Bridge daemon | `lib/loci_bridge.py` | Async background daemon — polls queue, runs heuristics, writes state |
+| Session lifecycle | `hooks/session-lifecycle.sh` | Manages session manifests and project detection |
+| Stop analysis | `hooks/stop-analysis.sh` | Surfaces active warnings at end of response |
 | Asm Analyze CLI | `lib/asm_analyze.py` | ELF binary analysis (assembly extraction, symbol maps, diffs) |
 | Task tracker | `lib/task_tracker.py` | Execution graph tracking and querying |
 | Project detection | `lib/detect-project.sh` | Auto-detects compiler, build system, architecture |
@@ -48,9 +46,9 @@ Claude tool use → Hook fires (capture-action.sh) → Classify action type
 Hooks are registered in `hooks/hooks.json` and resolved to absolute paths by `setup.sh`:
 
 - **SessionStart/SessionEnd** — lifecycle via `session-lifecycle.sh`
-- **PreToolUse** (Bash, Write/Edit, Task, MCP calls) — `capture-action.sh` injects warnings
-- **PostToolUse** (Bash, Write/Edit, MCP calls) — `capture-action.sh` classifies and queues actions
-- **Stop** — `stop-analysis.sh` surfaces critical warnings + agent prompt runs regression checks
+- **PreToolUse** (Bash, Write/Edit, Task, MCP calls) — `capture-action.sh` classifies actions
+- **PostToolUse** (Bash, Write/Edit, MCP calls) — `capture-action.sh` logs and tracks compilation artifacts
+- **Stop** — `stop-analysis.sh` surfaces active warnings
 
 ### Action Classification
 
@@ -60,11 +58,10 @@ Hooks are registered in `hooks/hooks.json` and resolved to absolute paths by `se
 
 All runtime state lives in `state/` (gitignored). Key files:
 
-- `queue/*.json` — transient action queue (hooks write, bridge consumes)
-- `loci-warnings.json` — active heuristic warnings injected into Claude context
+- `loci-warnings.json` — active warnings surfaced to Claude context
 - `loci-baselines.json` — persistent timing baselines for regression detection
-- `loci-context.json` — session action timeline
-- `bridge.log` / `hook-errors.log` — debugging logs
+- `loci-actions.log` — action log (all classified tool uses)
+- `hook-errors.log` — hook failure debugging
 
 ### Skills (Slash Commands)
 
@@ -82,7 +79,6 @@ Architecture mapping: `cortex-a53` → `aarch64`, `cortex-m4` → `cortexm`, `tc
 
 ```bash
 cat state/loci-warnings.json | jq .          # Active warnings
-tail -20 state/bridge.log                     # Bridge daemon log
 cat state/hook-errors.log                     # Hook failures
 python3 scripts/monitor-hooks.py              # Real-time hook metrics
 python3 lib/task_tracker.py --state-dir state --status   # Execution graph
@@ -91,14 +87,13 @@ python3 lib/task_tracker.py --state-dir state --status   # Execution graph
 ## Code Conventions
 
 - **Shell scripts**: kebab-case (`capture-action.sh`), use `set +e` for graceful degradation
-- **Python files**: snake_case (`loci_bridge.py`), Python 3.12 via uv-managed venv
+- **Python files**: snake_case (`asm_analyze.py`), Python 3.12 via uv-managed venv
 - **JSON keys**: snake_case (`action_type`, `compiler_flags`)
 - **State files**: kebab-case (`loci-warnings.json`)
 - Hook scripts read JSON from stdin and must handle missing dependencies (jq, etc.) gracefully
 
 ## Extension Points
 
-- **Custom heuristics**: Add patterns to `CppAnalyzer.PERF_PATTERNS` or `COMPILE_WARNINGS` in `lib/loci_bridge.py`
 - **Custom action types**: Add cases to `classify_action()` in `hooks/capture-action.sh`
 - **Custom skills**: Create `skills/<name>/SKILL.md`, reference `${LOCI_SLICER}` for slicer CLI
 

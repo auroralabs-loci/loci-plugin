@@ -8,7 +8,6 @@ set -euo pipefail
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 STATE_DIR="${PLUGIN_DIR}/state"
 WARNINGS_FILE="${STATE_DIR}/loci-warnings.json"
-METRICS_FILE="${STATE_DIR}/loci-metrics.json"
 
 # Check for any active critical warnings
 if [ -f "$WARNINGS_FILE" ]; then

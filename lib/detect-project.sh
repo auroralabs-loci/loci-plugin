@@ -41,7 +41,11 @@ find_binaries() {
       bins+=("$(basename "$f")")
     fi
   done
-  printf '%s\n' "${bins[@]}" 2>/dev/null | jq -R . | jq -s . || echo '[]'
+  if [ ${#bins[@]} -eq 0 ]; then
+    echo '[]'
+  else
+    printf '%s\n' "${bins[@]}" | jq -R . | jq -s .
+  fi
 }
 
 # Find assembly files

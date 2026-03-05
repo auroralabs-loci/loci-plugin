@@ -53,17 +53,6 @@ case "$HOOK_EVENT" in
       mv "${SESSION_FILE}.tmp" "$SESSION_FILE"
     fi
 
-    # Start the LOCI bridge if not running
-    BRIDGE_PID_FILE="${STATE_DIR}/bridge.pid"
-    if [ ! -f "$BRIDGE_PID_FILE" ] || ! kill -0 "$(cat "$BRIDGE_PID_FILE")" 2>/dev/null; then
-      LOCI_PYTHON="python3"
-      if ! command -v python3 >/dev/null 2>&1; then
-        LOCI_PYTHON="python"
-      fi
-      "$LOCI_PYTHON" "${PLUGIN_DIR}/lib/loci_bridge.py" --state-dir "$STATE_DIR" --session "$SESSION_ID" </dev/null >/dev/null 2>&1 &
-      echo $! > "$BRIDGE_PID_FILE"
-    fi
-
     # Inject detected project context for Claude
     ARCH_INFO=""
     if [ "$DETECTED_CONTEXT" != "{}" ]; then
@@ -105,25 +94,11 @@ LOCI_CONTEXT
       jq --arg ts "$TIMESTAMP" '.status = "completed" | .ended_at = $ts' "$SESSION_FILE" > "${SESSION_FILE}.tmp"
       mv "${SESSION_FILE}.tmp" "$SESSION_FILE"
 
-      # Generate session summary for LOCI
+      # Generate session summary
       SUMMARY=$("${PLUGIN_DIR}/lib/generate-summary.sh" "$SESSION_FILE" 2>/dev/null || echo "")
       if [ -n "$SUMMARY" ]; then
         SUMMARY_FILE="${SESSIONS_DIR}/${SESSION_ID}-summary.json"
         echo "$SUMMARY" > "$SUMMARY_FILE"
-
-        # Queue final summary for LOCI analysis
-        QUEUE_DIR="${STATE_DIR}/queue"
-        mkdir -p "$QUEUE_DIR"
-        jq -n \
-          --arg sid "$SESSION_ID" \
-          --arg ts "$TIMESTAMP" \
-          --argjson summary "$SUMMARY" \
-          '{
-            type: "session_complete",
-            session_id: $sid,
-            timestamp: $ts,
-            summary: $summary
-          }' > "${QUEUE_DIR}/${TIMESTAMP//[:.]/-}_session_end.json"
       fi
     fi
     ;;

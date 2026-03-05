@@ -4,7 +4,7 @@
 
 The LOCI plugin adds execution-aware C++ analysis to Claude Code. It has two sides:
 
-- **Local side** — hooks, a background daemon, and a bundled ELF asm-analyze CLI that run entirely on your machine.
+- **Local side** — hooks and a bundled ELF asm-analyze CLI that run entirely on your machine.
 - **Remote side** — an MCP server (SSE) that predicts execution time, standard deviation, and energy consumption for assembly functions on embedded targets (Cortex-A53, Cortex-M4, TriCore TC399).
 
 Running `setup.sh` wires these together into your project in one step.
@@ -48,22 +48,16 @@ If no `.whl` is found in `asm-analyze-wheels/`, the venv step is skipped. The re
 
 | Path | Purpose |
 |------|---------|
-| `state/queue/` | Transient action queue — hook scripts drop JSON here; bridge daemon consumes and deletes |
 | `state/sessions/` | Per-session manifests (written at `SessionStart` / `SessionEnd`) |
-| `state/analysis-queue/` | Reserved for async binary analysis tasks |
 | `state/loci-baselines.json` | Timing baselines per function, used for regression detection across sessions |
 
 Runtime files created during normal operation (not by setup):
 
 | File | Written by | Purpose |
 |------|-----------|---------|
-| `state/loci-warnings.json` | Bridge daemon | Active heuristic warnings injected into Claude's context at `PreToolUse` |
-| `state/loci-context.json` | Bridge daemon | Session action timeline and file relationships |
-| `state/loci-metrics.json` | Bridge daemon | Hook throughput stats (for `monitor-hooks.py`) |
+| `state/loci-warnings.json` | Hook scripts | Active warnings surfaced to Claude's context |
 | `state/loci-actions.log` | Hook scripts | Append-only line-delimited JSON audit trail |
-| `state/bridge.log` | Bridge daemon | Python logging output |
 | `state/hook-errors.log` | Hook scripts | Hook script failures |
-| `state/bridge.pid` | `session-lifecycle.sh` | PID of the running bridge for `SIGUSR1` signaling |
 
 ### 4. Claude Code hooks — `.claude/settings.json`
 
@@ -71,12 +65,12 @@ Hooks are merged into (or written to) `<project-root>/.claude/settings.json` wit
 
 | Event | Trigger | Script | Behaviour |
 |-------|---------|--------|-----------|
-| `SessionStart` | Always | `session-lifecycle.sh` | Starts the bridge daemon, writes session manifest |
-| `SessionEnd` | Always | `session-lifecycle.sh` | Stops the daemon, generates session summary |
-| `PreToolUse` | `Bash` | `capture-action.sh` | Injects active warnings for files Claude is about to touch |
-| `PreToolUse` | `Write` / `Edit` | `capture-action.sh` | Checks code modifications against known heuristic patterns |
-| `PreToolUse` | `Task`, MCP calls | `capture-action.sh` | Records action asynchronously (no blocking) |
-| `PostToolUse` | `Bash`, `Write`, `Edit`, MCP | `capture-action.sh` | Classifies the action (e.g., `cpp_compile`, `binary_analysis`), queues JSON for the bridge |
+| `SessionStart` | Always | `session-lifecycle.sh` | Writes session manifest, detects project context |
+| `SessionEnd` | Always | `session-lifecycle.sh` | Generates session summary |
+| `PreToolUse` | `Bash` | `capture-action.sh` | Classifies action type |
+| `PreToolUse` | `Write` / `Edit` | `capture-action.sh` | Classifies action type |
+| `PreToolUse` | `Task`, MCP calls | `capture-action.sh` | Classifies action type |
+| `PostToolUse` | `Bash`, `Write`, `Edit`, MCP | `capture-action.sh` | Logs classified action, tracks compilation artifacts |
 | `Stop` | Always | `stop-analysis.sh` | Surfaces critical warnings; blocks Claude if any are active |
 | `Stop` | Always | Agent prompt | Runs timing regression check against stored baselines |
 
@@ -94,16 +88,6 @@ Installed from `loci-plugin/skills/*/SKILL.md` with the asm-analyze CLI path sub
 ### 6. LOCI context — `.claude/CLAUDE.md`
 
 Copied from `loci-plugin/CLAUDE.md`. Provides Claude with architecture documentation, data-flow diagrams, heuristic tables, and CLI references so it understands the plugin's internals.
-
-### 7. Background daemon — `loci_bridge.py`
-
-Not installed as a system service. Started automatically at each `SessionStart` by `session-lifecycle.sh` and stopped at `SessionEnd`. It:
-
-- Runs **entirely locally** — no outbound HTTP calls.
-- Reads action queue files written by hook scripts.
-- Runs `CppAnalyzer` heuristics against source code and compile flags.
-- Writes warnings, metrics, and the session timeline back to the state directory.
-- Wakes immediately on `SIGUSR1` from hook scripts, or falls back to periodic polling.
 
 ---
 
@@ -125,10 +109,10 @@ loci-plugin/
 ├── .venv/                         ← Python 3.12 venv (asm-analyze + deps)
 ├── state/                         ← runtime state (queue, logs, baselines)
 ├── hooks/                         ← shell hook scripts called by Claude Code
-├── lib/                           ← bridge daemon, asm-analyze CLI, utilities
+├── lib/                           ← asm-analyze CLI, utilities
 ├── skills/                        ← slash command source templates
-├── asm-analyze-wheels/                 ← bundled asm-analyze wheel
-└── config/loci.json               ← bridge configuration
+├── asm-analyze-wheels/            ← bundled asm-analyze wheel
+└── config/loci.json               ← plugin configuration
 ```
 
 ---
@@ -219,13 +203,6 @@ Should show all five hook events.
 **asm-analyze venv creation failed** — Check the log:
 ```bash
 cat loci-plugin/state/asm-analyze-setup.log
-```
-
-**Bridge daemon not starting** — Check:
-```bash
-cat loci-plugin/state/bridge.log
-cat loci-plugin/state/hook-errors.log
-ps aux | grep loci_bridge.py
 ```
 
 **Timing backend unreachable** — The MCP server is remote (SSE). Check network access to the URL in `.mcp.json`. asm-analyze works entirely offline.
