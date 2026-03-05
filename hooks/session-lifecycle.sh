@@ -53,14 +53,19 @@ case "$HOOK_EVENT" in
       mv "${SESSION_FILE}.tmp" "$SESSION_FILE"
     fi
 
+    # Resolve venv Python (cross-platform)
+    if [ -x "${PLUGIN_DIR}/.venv/bin/python" ]; then
+      VENV_PYTHON="${PLUGIN_DIR}/.venv/bin/python"
+    elif [ -x "${PLUGIN_DIR}/.venv/Scripts/python.exe" ]; then
+      VENV_PYTHON="${PLUGIN_DIR}/.venv/Scripts/python.exe"
+    else
+      VENV_PYTHON="python3"
+    fi
+
     # Start the LOCI bridge if not running
     BRIDGE_PID_FILE="${STATE_DIR}/bridge.pid"
     if [ ! -f "$BRIDGE_PID_FILE" ] || ! kill -0 "$(cat "$BRIDGE_PID_FILE")" 2>/dev/null; then
-      LOCI_PYTHON="python3"
-      if ! command -v python3 >/dev/null 2>&1; then
-        LOCI_PYTHON="python"
-      fi
-      "$LOCI_PYTHON" "${PLUGIN_DIR}/lib/loci_bridge.py" --state-dir "$STATE_DIR" --session "$SESSION_ID" </dev/null >/dev/null 2>&1 &
+      "$VENV_PYTHON" "${PLUGIN_DIR}/lib/loci_bridge.py" --state-dir "$STATE_DIR" --session "$SESSION_ID" </dev/null >/dev/null 2>&1 &
       echo $! > "$BRIDGE_PID_FILE"
     fi
 
@@ -70,7 +75,7 @@ case "$HOOK_EVENT" in
       ARCH_INFO=$(echo "$DETECTED_CONTEXT" | jq -r '"Target: \(.architecture // "unknown"), Compiler: \(.compiler // "unknown"), Build: \(.build_system // "unknown")"' 2>/dev/null || echo "")
     fi
 
-    LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
+    LOCI_ASM_ANALYZE="${VENV_PYTHON} ${PLUGIN_DIR}/lib/asm_analyze.py"
 
     # Provide execution-aware context to Claude
     cat <<LOCI_CONTEXT
