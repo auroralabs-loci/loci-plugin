@@ -50,7 +50,7 @@ ARCH_ALIASES = {
     "thumb": "cortexm",
     "tricore": "tricore",
     "tc399": "tricore",
-    "tc39xx": "tricore",
+    "tc3xx": "tricore",
     "tc3xx": "tricore",
 }
 
