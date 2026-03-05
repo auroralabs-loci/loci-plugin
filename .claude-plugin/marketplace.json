@@ -1,8 +1,8 @@
 {
     "name": "loci-plugin",
     "owner": {
-        "name": "AuroraLabs", 
-        "email": "info@auroralabs.com"
+        "name": "AuroraLabs",
+        "email": "devtools@auroralabs.com"
     },
     "plugins": [
         {
@@ -15,7 +15,13 @@
             "description": "LOCI Execution-Aware Plugin for compiled binaries (C, C++, Rust, GoLang) — captures compilation, binary artifacts, and source modifications for binary-level performance, timing, regression, and power analysis. Includes local ELF binary asm-analyze CLI for symbols, assembly, blocks, callgraph, and diff.",
             "version": "0.9.6",
             "author": {
-                "name": "AuroraLabs LTD"
+                "name": "AuroraLabs"
+            },
+            "mcpServers": {
+                "loci": {
+                    "type": "http",
+                    "url": "https://dev.local.mcp.loci-dev.net/mcp"
+                }
             }
         }
     ]
