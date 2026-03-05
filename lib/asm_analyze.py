@@ -385,7 +385,7 @@ def extract_assembly(elf_path: str, functions: list[str] | None = None,
         csv_rows.append((fname, asm))
 
     # Build timing CSV — prefer per-block granularity when blocks available
-    if blocks_file and blocks_text:
+    if blocks_text:
         timing_csv = parse_blocks_to_timing_csv(blocks_text, functions)
     else:
         csv_buf = io.StringIO()
