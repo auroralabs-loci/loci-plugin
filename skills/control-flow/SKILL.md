@@ -33,7 +33,7 @@ Use these defaults only when the user has no existing build:
 |---|---|---|---|
 | aarch64 | `aarch64-linux-gnu-g++` | `-O2 -march=armv8-a` | `.loci-build/aarch64/` |
 | cortexm | `arm-none-eabi-g++` | `-O2 -mcpu=cortex-m4 -mthumb` | `.loci-build/cortexm/` |
-| tricore | `tricore-elf-g++` | `-O2 -mcpu=tc39xx` | `.loci-build/tricore/` |
+| tricore | `tricore-elf-g++` | `-O2 -mcpu=tc3xx` | `.loci-build/tricore/` |
 
 In all steps below, replace `<arch>`, `<compiler>`, and `<flags>` with values from the resolved architecture.
 
