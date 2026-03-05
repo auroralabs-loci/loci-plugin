@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-PLUGIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
