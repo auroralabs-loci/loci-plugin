@@ -133,7 +133,7 @@ install_asm_analyze() {
   export UV_INDEX_URL="https://pypi.org/simple/"
 
   if [ ! -d "$VENV_DIR" ]; then
-    uv venv "$VENV_DIR" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
+    uv venv --python 3.12 "$VENV_DIR" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
   fi
 
   VIRTUAL_ENV="$VENV_DIR" uv pip install loci_service_asmslicer --find-links "${WHEEL_DIR}" >> "$ASM_ANALYZE_LOG" 2>&1 || return 1
