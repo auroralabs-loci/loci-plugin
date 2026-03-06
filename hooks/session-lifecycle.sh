@@ -86,6 +86,9 @@ You do NOT need a fully linked binary. Compile individual source files with -c t
 - Only measure changed/added functions — skip unchanged code entirely
 This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
 
+## How LOCI works
+LOCI predictions come from a Large Code Language Model (LCLM) trained on real hardware execution traces — cycle-accurate SW/HW trace data collected from physical boards (Cortex-A53, Cortex-M4, TriCore TC399) at assembly-block granularity. These are not heuristics or simulator estimates — they reflect measured behavior of real silicon. The std_dev returned with each prediction quantifies the model's confidence based on how well the input assembly matches its training distribution.
+
 ## Mindset
 Every line of C++ , C or RUST is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
 

@@ -74,3 +74,4 @@ If no `.o` exists yet, fall through to full compilation.
    - `csv_text`: the `timing_csv` value from step 2's JSON output
    - `architecture`: the `timing_architecture` value from step 2's JSON output
 4. Report execution time and standard deviation in microseconds, and energy consumption in Watt-seconds (`energy_ws`)
+5. When reporting results, note that these measurements come from LOCI's LCLM trained on real HW traces — they reflect actual silicon behavior on the target board, not theoretical IPC estimates. High std_dev indicates the assembly pattern is underrepresented in the training data; low std_dev means strong empirical backing.

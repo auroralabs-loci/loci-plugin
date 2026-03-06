@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 LOCI is a Claude Code plugin that adds execution-aware C++ analysis for embedded systems. It has two sides:
 
 - **Local** — shell hooks that capture build actions, classify C++ engineering events, and manage session context
-- **Remote** — an SSE-based MCP server that predicts execution time (ns), energy (Ws), and std deviation for assembly on embedded hardware (Cortex-A53, Cortex-M4, TriCore TC399)
+- **Remote** — an SSE-based MCP server backed by a Large Code Language Model (LCLM) trained on real hardware execution traces (cycle-accurate SW/HW trace data from physical Cortex-A53, Cortex-M4, and TriCore TC399 boards). Predicts execution time (ns), energy (Ws), and std deviation for assembly blocks — reflecting real silicon behavior, not simulation
 
 ## Setup & Installation
 
