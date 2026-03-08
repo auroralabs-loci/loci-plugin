@@ -21,15 +21,16 @@ LOCI adds the missing layer: **execution awareness**. It gives your AI agent bou
 
 ## Installation
 
-**Prerequisites:** `jq`, `python3`, a C++ compiler
-
 ```bash
-git clone https://github.com/auroralabs/loci-plugin.git
-cd loci-plugin
-./loci-plugin/setup.sh
+claude plugin marketplace add https://github.com/auroralabs-loci/loci-plugin.git
+claude plugin install --scope user loci-plugin@loci-plugin
 ```
 
-Restart Claude Code after setup to activate the hooks.
+Restart Claude Code after installation to activate the hooks.
+
+After restarting:
+1. Go to the **Plugins** panel and select **LOCI**
+2. Authorize the LOCI MCP server — Claude Code will display an authorization URL; open it to create your account and activate execution time and energy predictions
 
 ## MCP Tool
 
