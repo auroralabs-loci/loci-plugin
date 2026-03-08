@@ -56,6 +56,42 @@ if ! command -v objdump >/dev/null 2>&1 || ! command -v readelf >/dev/null 2>&1;
   fi
 fi
 
+# Detect GNU c++filt that supports -r (required by asm-analyze for symbol demangling).
+# On macOS, brew installs binutils keg-only so Apple's c++filt may shadow it.
+# Write the result to state/loci-paths.json so asm_analyze.py can prepend the right dir.
+_detect_cxxfilt() {
+  local candidates=()
+  # Known keg-only brew paths (arm64 and x86 Mac, Linux standard)
+  candidates+=(
+    "/opt/homebrew/opt/binutils/bin"
+    "/usr/local/opt/binutils/bin"
+    "/usr/bin"
+    "/usr/local/bin"
+  )
+  # Also check wherever c++filt currently resolves
+  local cur
+  cur="$(command -v c++filt 2>/dev/null)"
+  if [ -n "$cur" ]; then
+    candidates+=("$(dirname "$cur")")
+  fi
+
+  for dir in "${candidates[@]}"; do
+    if [ -x "$dir/c++filt" ] && echo "_Z3fooi" | "$dir/c++filt" -r >/dev/null 2>&1; then
+      echo "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+mkdir -p "${PLUGIN_DIR}/state"
+CXXFILT_DIR="$(_detect_cxxfilt 2>/dev/null || true)"
+PATHS_JSON="${PLUGIN_DIR}/state/loci-paths.json"
+if [ -n "$CXXFILT_DIR" ]; then
+  echo "{\"cxxfilt_dir\": \"${CXXFILT_DIR}\"}" > "$PATHS_JSON"
+else
+  echo "{\"cxxfilt_dir\": \"\"}" > "$PATHS_JSON"
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
   echo -e "${YELLOW}uv not found — installing...${NC}"
   if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
@@ -269,29 +305,29 @@ else
 fi
 
 # 9. Install slash commands
-echo -n "Installing slash commands... "
-COMMANDS_DIR="${PROJECT_ROOT}/.claude/commands"
-mkdir -p "$COMMANDS_DIR"
-CMD_COUNT=0
-for skill_dir in "${PLUGIN_DIR}/skills"/*/; do
-  if [ -f "${skill_dir}SKILL.md" ]; then
-    skill_name=$(basename "$skill_dir")
-    if [ -n "$LOCI_ASM_ANALYZE_CMD" ]; then
-      sed "s|\${LOCI_ASM_ANALYZE}|${LOCI_ASM_ANALYZE_CMD}|g" "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
-    else
-      sed 's|\${LOCI_ASM_ANALYZE}|# asm-analyze unavailable|g' "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
-    fi
-    CMD_COUNT=$((CMD_COUNT + 1))
-  fi
-done
-echo -e "${GREEN}OK (${CMD_COUNT} commands: $(ls "${COMMANDS_DIR}"/*.md 2>/dev/null | xargs -I{} basename {} .md | paste -sd', '))${NC}"
+# echo -n "Installing slash commands... "
+# COMMANDS_DIR="${PROJECT_ROOT}/.claude/commands"
+# mkdir -p "$COMMANDS_DIR"
+# CMD_COUNT=0
+# for skill_dir in "${PLUGIN_DIR}/skills"/*/; do
+#   if [ -f "${skill_dir}SKILL.md" ]; then
+#     skill_name=$(basename "$skill_dir")
+#     if [ -n "$LOCI_ASM_ANALYZE_CMD" ]; then
+#       sed "s|\${LOCI_ASM_ANALYZE}|${LOCI_ASM_ANALYZE_CMD}|g" "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+#     else
+#       sed 's|\${LOCI_ASM_ANALYZE}|# asm-analyze unavailable|g' "${skill_dir}SKILL.md" > "${COMMANDS_DIR}/${skill_name}.md"
+#     fi
+#     CMD_COUNT=$((CMD_COUNT + 1))
+#   fi
+# done
+# echo -e "${GREEN}OK (${CMD_COUNT} commands: $(ls "${COMMANDS_DIR}"/*.md 2>/dev/null | xargs -I{} basename {} .md | paste -sd', '))${NC}"
 
 # 10. Install LOCI context for Claude (optional)
-if [ -f "${PLUGIN_DIR}/CLAUDE.md" ]; then
-  echo -n "Installing LOCI context... "
-  cp "${PLUGIN_DIR}/CLAUDE.md" "${PROJECT_ROOT}/.claude/CLAUDE.md"
-  echo -e "${GREEN}OK${NC}"
-fi
+# if [ -f "${PLUGIN_DIR}/CLAUDE.md" ]; then
+#   echo -n "Installing LOCI context... "
+#   cp "${PLUGIN_DIR}/CLAUDE.md" "${PROJECT_ROOT}/.claude/CLAUDE.md"
+#   echo -e "${GREEN}OK${NC}"
+# fi
 
 echo ""
 echo -e "${GREEN}Setup complete!${NC}"

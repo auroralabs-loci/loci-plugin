@@ -25,6 +25,19 @@ import tempfile
 import traceback
 from pathlib import Path
 
+# Prepend the cxxfilt_dir detected by setup.sh (written to state/loci-paths.json).
+# This ensures the GNU c++filt (which supports -r) is found before any
+# system-installed version that may not (e.g. Apple's /usr/bin/c++filt).
+_PLUGIN_DIR = Path(__file__).parent.parent
+_PATHS_FILE = _PLUGIN_DIR / "state" / "loci-paths.json"
+try:
+    _loci_paths = json.loads(_PATHS_FILE.read_text())
+    _cxxfilt_dir = _loci_paths.get("cxxfilt_dir", "")
+    if _cxxfilt_dir and _cxxfilt_dir not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _cxxfilt_dir + os.pathsep + os.environ.get("PATH", "")
+except (OSError, json.JSONDecodeError):
+    pass
+
 import pandas as pd
 
 # ---------------------------------------------------------------------------
