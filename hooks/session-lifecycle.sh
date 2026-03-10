@@ -67,6 +67,28 @@ case "$HOOK_EVENT" in
 
     LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
 
+    # Resolve the correct python to run asm_analyze.py
+    LOCI_PYTHON=""
+    if [ -x "${PLUGIN_DIR}/.venv/bin/python3" ]; then
+      LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
+    elif [ -x "${PLUGIN_DIR}/.venv/bin/python" ]; then
+      LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python"
+    elif [ -x "${PLUGIN_DIR}/.venv/Scripts/python.exe" ]; then
+      LOCI_PYTHON="${PLUGIN_DIR}/.venv/Scripts/python.exe"
+    fi
+
+    # If no venv, try running setup.sh to create it
+    if [ -z "$LOCI_PYTHON" ] && [ -f "${PLUGIN_DIR}/setup/setup.sh" ]; then
+      bash "${PLUGIN_DIR}/setup/setup.sh" >/dev/null 2>&1 || true
+      if [ -x "${PLUGIN_DIR}/.venv/bin/python3" ]; then
+        LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
+      elif [ -x "${PLUGIN_DIR}/.venv/bin/python" ]; then
+        LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python"
+      fi
+    fi
+
+    LOCI_ASM_CMD="${LOCI_PYTHON:+${LOCI_PYTHON} }${LOCI_ASM_ANALYZE}"
+
     # Extract ELF files and build compiler from detection
     ELF_FILES=""
     BUILD_COMPILER=""
@@ -88,17 +110,16 @@ ${ELF_FILES:+Existing ELF/object files found: ${ELF_FILES}}
 NEVER use objdump, readelf, nm, tiarmobjdump, or other disassembly tools.
 ALWAYS use the LOCI asm-analyze CLI instead — it extracts assembly in the exact format needed for LOCI timing predictions.
 
-asm-analyze CLI: ${LOCI_ASM_ANALYZE}
-Run it from the plugin's .venv: ${PLUGIN_DIR}/.venv/bin/python3 ${LOCI_ASM_ANALYZE}
+asm-analyze command: ${LOCI_ASM_CMD}
 
 ## How to analyze with LOCI (in priority order)
 
 ### 1. If ELF/object files already exist — use them directly
 The project may already have compiled .elf, .out, .o, or .axf files from its own build system.
 asm_analyze.py auto-detects architecture from the ELF — no need to specify --arch:
-  ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <file>
-  ${LOCI_ASM_ANALYZE} extract-symbols --elf-path <file>
-  ${LOCI_ASM_ANALYZE} diff-elfs --elf-path <old> --comparing-elf-path <new>
+  ${LOCI_ASM_CMD} extract-assembly --elf-path <file>
+  ${LOCI_ASM_CMD} extract-symbols --elf-path <file>
+  ${LOCI_ASM_CMD} diff-elfs --elf-path <old> --comparing-elf-path <new>
 
 ### 2. If you need to compile — use the project's own build system first
 Look at the project's Makefile, CMakeLists.txt, build scripts, or IDE project files to understand how it builds.
@@ -123,8 +144,8 @@ Call mcp__loci-plugin__get_assembly_block_exec_behavior with:
 
 ## Partial processing with .o files
 You do NOT need a fully linked binary. Compile individual source files with -c to produce .o object files, then:
-- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name
-- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o
+- Extract assembly from the .o: ${LOCI_ASM_CMD} extract-assembly --elf-path file.o --functions func_name
+- Diff two .o files to find changed functions: ${LOCI_ASM_CMD} diff-elfs --elf-path old.o --comparing-elf-path new.o
 - Only measure changed/added functions — skip unchanged code entirely
 This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
 
@@ -142,7 +163,7 @@ LOCI plugin active but project targets \`${DETECTED_ARCH}\` which is not a nativ
 - **tricore** (TriCore TC399 / TC3xx) — cross-compile with tricore-elf-g++
 
 IMPORTANT: Always use asm_analyze.py (not objdump/readelf) for binary analysis:
-  ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <file>
+  ${LOCI_ASM_CMD} extract-assembly --elf-path <file>
 It auto-detects architecture. Output includes timing_csv and timing_architecture for the MCP tool.
 LOCI_NOTICE
     fi

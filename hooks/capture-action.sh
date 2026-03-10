@@ -258,9 +258,18 @@ fi
 # ---------------------------------------------------------------
 if [ "$HOOK_EVENT" = "PreToolUse" ] && [ "$ACTION_TYPE" = "binary_analysis" ]; then
   LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
-  VENV_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
+  # Resolve venv python (same logic as session-lifecycle.sh)
+  LOCI_PYTHON=""
+  if [ -x "${PLUGIN_DIR}/.venv/bin/python3" ]; then
+    LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
+  elif [ -x "${PLUGIN_DIR}/.venv/bin/python" ]; then
+    LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python"
+  elif [ -x "${PLUGIN_DIR}/.venv/Scripts/python.exe" ]; then
+    LOCI_PYTHON="${PLUGIN_DIR}/.venv/Scripts/python.exe"
+  fi
+  LOCI_ASM_CMD="${LOCI_PYTHON:+${LOCI_PYTHON} }${LOCI_ASM_ANALYZE}"
   if [ -f "$LOCI_ASM_ANALYZE" ]; then
-    jq -n --arg asm_cmd "${VENV_PYTHON} ${LOCI_ASM_ANALYZE}" '{
+    jq -n --arg asm_cmd "${LOCI_ASM_CMD}" '{
       decision: "block",
       reason: ("Use LOCI asm-analyze instead of objdump/readelf/nm for binary analysis.\nasm-analyze extracts assembly in the exact format needed for LOCI timing predictions and auto-detects architecture from the ELF.\n\nCommands:\n  " + $asm_cmd + " extract-assembly --elf-path <file> [--functions fn1,fn2]\n  " + $asm_cmd + " extract-symbols --elf-path <file>\n  " + $asm_cmd + " diff-elfs --elf-path <old> --comparing-elf-path <new>\n\nThe output JSON includes timing_csv and timing_architecture — use those directly for the MCP tool call.")
     }'

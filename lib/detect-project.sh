@@ -24,20 +24,23 @@ detect_compiler() {
 
 # Detect build system (including vendor IDEs)
 detect_build_system() {
+  # Check root and one level of subdirectories
   [ -f "$CWD/CMakeLists.txt" ] && echo "cmake" && return
   [ -f "$CWD/Makefile" ] || [ -f "$CWD/makefile" ] && echo "make" && return
   [ -f "$CWD/meson.build" ] && echo "meson" && return
   [ -f "$CWD/BUILD" ] || [ -f "$CWD/WORKSPACE" ] && echo "bazel" && return
   [ -f "$CWD/conanfile.txt" ] || [ -f "$CWD/conanfile.py" ] && echo "conan" && return
   [ -f "$CWD/vcpkg.json" ] && echo "vcpkg" && return
-  # Vendor IDE project files
-  ls "$CWD"/*.projectspec 1>/dev/null 2>&1 && echo "ccs" && return
-  ls "$CWD"/*.ccsproject 1>/dev/null 2>&1 && echo "ccs" && return
-  ls "$CWD"/.cproject 1>/dev/null 2>&1 && echo "ccs" && return
-  ls "$CWD"/*.ewp 1>/dev/null 2>&1 && echo "iar" && return
-  ls "$CWD"/*.eww 1>/dev/null 2>&1 && echo "iar" && return
-  ls "$CWD"/*.uvprojx 1>/dev/null 2>&1 && echo "keil" && return
-  ls "$CWD"/*.uvproj 1>/dev/null 2>&1 && echo "keil" && return
+  # Vendor IDE project files (root and subdirs)
+  find "$CWD" -maxdepth 2 -name "*.projectspec" -print -quit 2>/dev/null | grep -q . && echo "ccs" && return
+  find "$CWD" -maxdepth 2 -name "*.ccsproject" -print -quit 2>/dev/null | grep -q . && echo "ccs" && return
+  find "$CWD" -maxdepth 2 -name ".cproject" -print -quit 2>/dev/null | grep -q . && echo "ccs" && return
+  find "$CWD" -maxdepth 2 -name "*.ewp" -print -quit 2>/dev/null | grep -q . && echo "iar" && return
+  find "$CWD" -maxdepth 2 -name "*.eww" -print -quit 2>/dev/null | grep -q . && echo "iar" && return
+  find "$CWD" -maxdepth 2 -name "*.uvprojx" -print -quit 2>/dev/null | grep -q . && echo "keil" && return
+  find "$CWD" -maxdepth 2 -name "*.uvproj" -print -quit 2>/dev/null | grep -q . && echo "keil" && return
+  # Makefile in subdirectories
+  find "$CWD" -maxdepth 2 -name "Makefile" -print -quit 2>/dev/null | grep -q . && echo "make" && return
   echo "direct"
 }
 
@@ -48,27 +51,19 @@ find_sources() {
 
 # Find ELF/object files in common build directories
 find_elf_files() {
-  local dirs=("$CWD")
-  # Common build output directories
-  for d in build out Debug Release output bin obj artifacts .loci-build; do
-    [ -d "$CWD/$d" ] && dirs+=("$CWD/$d")
-    # Also one level deeper (e.g. build/Debug, out/cortexm)
-    for sub in "$CWD/$d"/*/; do
-      [ -d "$sub" ] && dirs+=("$sub")
-    done
-  done
-
+  # Search broadly: all subdirectories up to 3 levels deep for ELF-type files
   local found=()
-  for d in "${dirs[@]}"; do
-    while IFS= read -r f; do
-      [ -n "$f" ] && found+=("$f")
-    done < <(find "$d" -maxdepth 1 \( -name "*.elf" -o -name "*.out" -o -name "*.o" -o -name "*.axf" -o -name "*.bin" \) -type f 2>/dev/null | head -20)
-    # Also check files without extension that are ELF
-    while IFS= read -r f; do
-      if [ -f "$f" ] && file "$f" 2>/dev/null | grep -qi 'ELF'; then
-        found+=("$f")
-      fi
-    done < <(find "$d" -maxdepth 1 -type f -executable ! -name "*.sh" ! -name "*.py" ! -name "*.pl" 2>/dev/null | head -10)
+  while IFS= read -r f; do
+    [ -n "$f" ] && found+=("$f")
+  done < <(find "$CWD" -maxdepth 3 \( -name "*.elf" -o -name "*.out" -o -name "*.axf" \) -type f 2>/dev/null | head -30)
+
+  # Also check .o files but only in common build directories (too many .o files otherwise)
+  for d in build out Debug Release output bin obj artifacts .loci-build; do
+    if [ -d "$CWD/$d" ]; then
+      while IFS= read -r f; do
+        [ -n "$f" ] && found+=("$f")
+      done < <(find "$CWD/$d" -maxdepth 2 -name "*.o" -type f 2>/dev/null | head -10)
+    fi
   done
 
   if [ ${#found[@]} -eq 0 ]; then
