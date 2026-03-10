@@ -67,22 +67,64 @@ case "$HOOK_EVENT" in
 
     LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
 
+    # Extract ELF files and build compiler from detection
+    ELF_FILES=""
+    BUILD_COMPILER=""
+    if [ "$DETECTED_CONTEXT" != "{}" ]; then
+      ELF_FILES=$(echo "$DETECTED_CONTEXT" | jq -r '.elf_files // [] | map(select(. != null)) | join(", ")' 2>/dev/null || echo "")
+      BUILD_COMPILER=$(echo "$DETECTED_CONTEXT" | jq -r '.build_compiler // empty' 2>/dev/null || echo "")
+    fi
+
     if [ "$LOCI_COMPATIBLE" = "true" ] && [ -n "$LOCI_TARGET" ]; then
       # Provide execution-aware context to Claude
       cat <<LOCI_CONTEXT
 LOCI execution-aware plugin active. Session ${SESSION_ID:0:8}.
 ${ARCH_INFO:+$ARCH_INFO}
 LOCI target: ${LOCI_TARGET}
+${BUILD_COMPILER:+Build compiler (from project config): ${BUILD_COMPILER}}
+${ELF_FILES:+Existing ELF/object files found: ${ELF_FILES}}
 
-## When to use LOCI
-- After writing/modifying C, C++, or Rust code: compile and measure execution time
-- After compilation: extract assembly and call mcp__loci-plugin__get_assembly_block_exec_behavior
-- When optimizing: compare before/after timing to detect regressions
+## IMPORTANT: Use asm_analyze.py for ALL binary/ELF analysis
+NEVER use objdump, readelf, nm, tiarmobjdump, or other disassembly tools.
+ALWAYS use the LOCI asm-analyze CLI instead — it extracts assembly in the exact format needed for LOCI timing predictions.
+
+asm-analyze CLI: ${LOCI_ASM_ANALYZE}
+Run it from the plugin's .venv: ${PLUGIN_DIR}/.venv/bin/python3 ${LOCI_ASM_ANALYZE}
+
+## How to analyze with LOCI (in priority order)
+
+### 1. If ELF/object files already exist — use them directly
+The project may already have compiled .elf, .out, .o, or .axf files from its own build system.
+asm_analyze.py auto-detects architecture from the ELF — no need to specify --arch:
+  ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <file>
+  ${LOCI_ASM_ANALYZE} extract-symbols --elf-path <file>
+  ${LOCI_ASM_ANALYZE} diff-elfs --elf-path <old> --comparing-elf-path <new>
+
+### 2. If you need to compile — use the project's own build system first
+Look at the project's Makefile, CMakeLists.txt, build scripts, or IDE project files to understand how it builds.
+Use the project's own compiler and flags. Do NOT cross-compile with a different toolchain unless the project has no build system.
+
+### 3. Cross-compile as last resort (no existing build)
+Only if the project has no build system and no compiled artifacts:
+| Architecture | Compiler | Flags |
+|---|---|---|
+| aarch64 | aarch64-linux-gnu-g++ | -O2 -march=armv8-a |
+| cortexm | arm-none-eabi-g++ | -O2 -mcpu=cortex-m4 -mthumb |
+| tricore | tricore-elf-g++ | -O2 |
+
+## Feeding asm_analyze output into the MCP tool
+The extract-assembly command outputs JSON with two key fields:
+- **timing_csv** — CSV text ready for the MCP tool's csv_text parameter
+- **timing_architecture** — architecture string ready for the MCP tool's architecture parameter
+
+Call mcp__loci-plugin__get_assembly_block_exec_behavior with:
+  csv_text = the timing_csv value from extract-assembly output
+  architecture = the timing_architecture value from extract-assembly output
 
 ## Partial processing with .o files
 You do NOT need a fully linked binary. Compile individual source files with -c to produce .o object files, then:
-- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name --arch ${LOCI_TARGET}
-- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o --arch ${LOCI_TARGET}
+- Extract assembly from the .o: ${LOCI_ASM_ANALYZE} extract-assembly --elf-path file.o --functions func_name
+- Diff two .o files to find changed functions: ${LOCI_ASM_ANALYZE} diff-elfs --elf-path old.o --comparing-elf-path new.o
 - Only measure changed/added functions — skip unchanged code entirely
 This makes analysis fast and incremental: compile one file, slice the .o, measure only what changed.
 
@@ -90,16 +132,18 @@ This makes analysis fast and incremental: compile one file, slice the .o, measur
 LOCI predictions come from a Large Code Language Model (LCLM) trained on real hardware execution traces — cycle-accurate SW/HW trace data collected from physical boards (Cortex-A53, Cortex-M4, TriCore TC399) at assembly-block granularity. These are not heuristics or simulator estimates — they reflect measured behavior of real silicon. The std_dev returned with each prediction quantifies the model's confidence based on how well the input assembly matches its training distribution.
 
 ## Mindset
-Every line of C++ , C or RUST is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
-
-## Available tools
-- /loci/analyze — full workflow: compile, extract assembly, measure (execution time in ns, and energy in Ws)
-- ${LOCI_ASM_ANALYZE} — ELF/object file slicer (extract-assembly, diff-elfs, slice-elf)
-- mcp__loci-plugin__get_assembly_block_exec_behavior — timing/energy predictions
+Every line of C++, C, or Rust is an instruction sequence with real hardware consequences. Variable sizes, memory lifetimes, call ordering — they all show up in the assembly. Think about what the hardware actually does with every line you write.
 LOCI_CONTEXT
     else
       cat <<LOCI_NOTICE
-LOCI plugin active but project targets \`${DETECTED_ARCH}\` which is not a supported LOCI target (aarch64, armv7e-m, tc3xx). LOCI analysis requires cross-compilation to a supported architecture.
+LOCI plugin active but project targets \`${DETECTED_ARCH}\` which is not a native LOCI target. LOCI supports three architectures:
+- **aarch64** (Cortex-A53 / ARMv8-A 64-bit) — cross-compile with aarch64-linux-gnu-g++
+- **cortexm** (Cortex-M4 / ARMv7E-M Thumb2) — cross-compile with arm-none-eabi-g++
+- **tricore** (TriCore TC399 / TC3xx) — cross-compile with tricore-elf-g++
+
+IMPORTANT: Always use asm_analyze.py (not objdump/readelf) for binary analysis:
+  ${LOCI_ASM_ANALYZE} extract-assembly --elf-path <file>
+It auto-detects architecture. Output includes timing_csv and timing_architecture for the MCP tool.
 LOCI_NOTICE
     fi
     ;;

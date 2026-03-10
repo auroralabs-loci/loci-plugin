@@ -95,7 +95,7 @@ classify_action() {
       elif echo "$cmd" | grep -qiE '(ld|lld|gold)\s'; then
         echo "cpp_link"
       # Binary analysis & disassembly — LOCI core domain
-      elif echo "$cmd" | grep -qiE '(objdump|readelf|nm|strings|file|ldd|otool|dwarfdump|c\+\+filt)\s'; then
+      elif echo "$cmd" | grep -qiE '(objdump|readelf|nm|strings|ldd|otool|dwarfdump|c\+\+filt|tiarmobjdump|tiarmreadelf|armofd|armdis|ielfdump)\s'; then
         echo "binary_analysis"
       # Assembly
       elif echo "$cmd" | grep -qiE '(nasm|as|yasm)\s'; then
@@ -251,6 +251,21 @@ fi
 # Write to action log with error handling
 if ! echo "$ENRICHED_RECORD" >> "$LOG_FILE" 2>/dev/null; then
     log_error "Failed to write to action log"
+fi
+
+# ---------------------------------------------------------------
+# PreToolUse: steer Claude toward asm_analyze.py for binary analysis
+# ---------------------------------------------------------------
+if [ "$HOOK_EVENT" = "PreToolUse" ] && [ "$ACTION_TYPE" = "binary_analysis" ]; then
+  LOCI_ASM_ANALYZE="${PLUGIN_DIR}/lib/asm_analyze.py"
+  VENV_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
+  if [ -f "$LOCI_ASM_ANALYZE" ]; then
+    jq -n --arg asm_cmd "${VENV_PYTHON} ${LOCI_ASM_ANALYZE}" '{
+      decision: "block",
+      reason: ("Use LOCI asm-analyze instead of objdump/readelf/nm for binary analysis.\nasm-analyze extracts assembly in the exact format needed for LOCI timing predictions and auto-detects architecture from the ELF.\n\nCommands:\n  " + $asm_cmd + " extract-assembly --elf-path <file> [--functions fn1,fn2]\n  " + $asm_cmd + " extract-symbols --elf-path <file>\n  " + $asm_cmd + " diff-elfs --elf-path <old> --comparing-elf-path <new>\n\nThe output JSON includes timing_csv and timing_architecture — use those directly for the MCP tool call.")
+    }'
+    exit 0
+  fi
 fi
 
 # For PostToolUse: track binary-producing actions

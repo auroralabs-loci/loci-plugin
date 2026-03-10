@@ -6,18 +6,23 @@ set -euo pipefail
 
 CWD="${1:-.}"
 
-# Detect C++ compiler
+# Detect C++ compiler (including vendor/embedded toolchains)
 detect_compiler() {
-  if command -v g++ >/dev/null 2>&1; then
-    echo "g++"
-  elif command -v clang++ >/dev/null 2>&1; then
-    echo "clang++"
-  else
-    echo "unknown"
-  fi
+  # Check standard compilers first
+  command -v g++ >/dev/null 2>&1 && echo "g++" && return
+  command -v clang++ >/dev/null 2>&1 && echo "clang++" && return
+  # Vendor / embedded compilers
+  command -v tiarmclang >/dev/null 2>&1 && echo "tiarmclang" && return
+  command -v armcl >/dev/null 2>&1 && echo "armcl" && return
+  command -v iccarm >/dev/null 2>&1 && echo "iccarm" && return
+  command -v armcc >/dev/null 2>&1 && echo "armcc" && return
+  command -v arm-none-eabi-gcc >/dev/null 2>&1 && echo "arm-none-eabi-gcc" && return
+  command -v aarch64-linux-gnu-gcc >/dev/null 2>&1 && echo "aarch64-linux-gnu-gcc" && return
+  command -v tricore-elf-gcc >/dev/null 2>&1 && echo "tricore-elf-gcc" && return
+  echo "unknown"
 }
 
-# Detect build system
+# Detect build system (including vendor IDEs)
 detect_build_system() {
   [ -f "$CWD/CMakeLists.txt" ] && echo "cmake" && return
   [ -f "$CWD/Makefile" ] || [ -f "$CWD/makefile" ] && echo "make" && return
@@ -25,6 +30,14 @@ detect_build_system() {
   [ -f "$CWD/BUILD" ] || [ -f "$CWD/WORKSPACE" ] && echo "bazel" && return
   [ -f "$CWD/conanfile.txt" ] || [ -f "$CWD/conanfile.py" ] && echo "conan" && return
   [ -f "$CWD/vcpkg.json" ] && echo "vcpkg" && return
+  # Vendor IDE project files
+  ls "$CWD"/*.projectspec 1>/dev/null 2>&1 && echo "ccs" && return
+  ls "$CWD"/*.ccsproject 1>/dev/null 2>&1 && echo "ccs" && return
+  ls "$CWD"/.cproject 1>/dev/null 2>&1 && echo "ccs" && return
+  ls "$CWD"/*.ewp 1>/dev/null 2>&1 && echo "iar" && return
+  ls "$CWD"/*.eww 1>/dev/null 2>&1 && echo "iar" && return
+  ls "$CWD"/*.uvprojx 1>/dev/null 2>&1 && echo "keil" && return
+  ls "$CWD"/*.uvproj 1>/dev/null 2>&1 && echo "keil" && return
   echo "direct"
 }
 
@@ -33,7 +46,39 @@ find_sources() {
   find "$CWD" -maxdepth 2 \( -name "*.cpp" -o -name "*.cxx" -o -name "*.cc" -o -name "*.c" -o -name "*.h" -o -name "*.hpp" \) 2>/dev/null | head -20 | jq -R . | jq -s .
 }
 
-# Find compiled binaries and object files
+# Find ELF/object files in common build directories
+find_elf_files() {
+  local dirs=("$CWD")
+  # Common build output directories
+  for d in build out Debug Release output bin obj artifacts .loci-build; do
+    [ -d "$CWD/$d" ] && dirs+=("$CWD/$d")
+    # Also one level deeper (e.g. build/Debug, out/cortexm)
+    for sub in "$CWD/$d"/*/; do
+      [ -d "$sub" ] && dirs+=("$sub")
+    done
+  done
+
+  local found=()
+  for d in "${dirs[@]}"; do
+    while IFS= read -r f; do
+      [ -n "$f" ] && found+=("$f")
+    done < <(find "$d" -maxdepth 1 \( -name "*.elf" -o -name "*.out" -o -name "*.o" -o -name "*.axf" -o -name "*.bin" \) -type f 2>/dev/null | head -20)
+    # Also check files without extension that are ELF
+    while IFS= read -r f; do
+      if [ -f "$f" ] && file "$f" 2>/dev/null | grep -qi 'ELF'; then
+        found+=("$f")
+      fi
+    done < <(find "$d" -maxdepth 1 -type f -executable ! -name "*.sh" ! -name "*.py" ! -name "*.pl" 2>/dev/null | head -10)
+  done
+
+  if [ ${#found[@]} -eq 0 ]; then
+    echo '[]'
+  else
+    printf '%s\n' "${found[@]}" | sort -u | head -20 | jq -R . | jq -s .
+  fi
+}
+
+# Find compiled binaries (executables in CWD root — legacy compat)
 find_binaries() {
   local bins=()
   for f in "$CWD"/*; do
@@ -53,12 +98,50 @@ find_asm_files() {
   find "$CWD" -maxdepth 2 \( -name "*.asm" -o -name "*.s" -o -name "*.S" \) 2>/dev/null | head -20 | jq -R . | jq -s .
 }
 
-# Detect architecture from existing binaries
+# Detect architecture from an ELF file using `file` command
+arch_from_elf() {
+  local elf_path="$1"
+  local file_output
+  file_output=$(file "$elf_path" 2>/dev/null) || return 1
+  # Match architecture from file(1) output
+  if echo "$file_output" | grep -qiE 'aarch64|ARM aarch64|ARM 64'; then
+    echo "aarch64"
+  elif echo "$file_output" | grep -qiE 'ARM,.*EABI|Thumb|Cortex|armv7|arm,'; then
+    echo "arm"
+  elif echo "$file_output" | grep -qiE 'TriCore|tricore'; then
+    echo "tricore"
+  elif echo "$file_output" | grep -qiE 'x86.64|x86-64|AMD64'; then
+    echo "x86_64"
+  elif echo "$file_output" | grep -qiE 'Intel 80386|i386|x86,'; then
+    echo "i386"
+  else
+    return 1
+  fi
+}
+
+# Detect architecture — prefer ELF analysis over uname
 detect_architecture() {
+  local elf_files="$1"
+  # Try to detect from found ELF files first
+  local elf_path
+  elf_path=$(echo "$elf_files" | jq -r '.[0] // empty' 2>/dev/null)
+  if [ -n "$elf_path" ] && [ -f "$elf_path" ]; then
+    local arch
+    arch=$(arch_from_elf "$elf_path")
+    if [ -n "$arch" ]; then
+      echo "$arch"
+      return
+    fi
+  fi
+  # Fallback: check executables in CWD
   for f in "$CWD"/*; do
     if [ -f "$f" ] && [ -x "$f" ] && file "$f" 2>/dev/null | grep -qiE '(ELF|Mach-O)'; then
-      file "$f" | grep -oiE '(x86.64|arm64|aarch64|i386|x86_64)' | head -1
-      return
+      local arch
+      arch=$(arch_from_elf "$f")
+      if [ -n "$arch" ]; then
+        echo "$arch"
+        return
+      fi
     fi
   done
   uname -m
@@ -67,13 +150,23 @@ detect_architecture() {
 # Detect available LOCI-compatible cross-compilers
 detect_cross_compilers() {
   local compilers=()
+  # GCC cross-compilers
   command -v aarch64-linux-gnu-g++ >/dev/null 2>&1 && compilers+=("aarch64")
+  command -v aarch64-linux-gnu-gcc >/dev/null 2>&1 && compilers+=("aarch64")
   command -v arm-none-eabi-g++ >/dev/null 2>&1 && compilers+=("cortexm")
+  command -v arm-none-eabi-gcc >/dev/null 2>&1 && compilers+=("cortexm")
   command -v tricore-elf-g++ >/dev/null 2>&1 && compilers+=("tricore")
+  command -v tricore-elf-gcc >/dev/null 2>&1 && compilers+=("tricore")
+  # Vendor compilers that target LOCI architectures
+  command -v tiarmclang >/dev/null 2>&1 && compilers+=("cortexm")
+  command -v armcl >/dev/null 2>&1 && compilers+=("cortexm")
+  command -v iccarm >/dev/null 2>&1 && compilers+=("cortexm")
+  command -v armcc >/dev/null 2>&1 && compilers+=("cortexm")
   if [ ${#compilers[@]} -eq 0 ]; then
     echo '[]'
   else
-    printf '%s\n' "${compilers[@]}" | jq -R . | jq -s .
+    # Deduplicate
+    printf '%s\n' "${compilers[@]}" | sort -u | jq -R . | jq -s .
   fi
 }
 
@@ -92,7 +185,6 @@ resolve_loci_target() {
       echo "tricore" ;;
     *)
       # Host arch is not a LOCI target — check if any cross-compiler is available
-      # Pick the first available cross-compiler as default
       local first
       first=$(echo "$cross_compilers" | jq -r '.[0] // empty' 2>/dev/null)
       if [ -n "$first" ]; then
@@ -104,14 +196,51 @@ resolve_loci_target() {
   esac
 }
 
+# Detect compiler referenced in build configs (not necessarily in PATH)
+detect_build_compiler() {
+  local build_sys="$1"
+  # Search build config files for compiler references
+  local config_files=()
+  case "$build_sys" in
+    cmake) config_files=("$CWD/CMakeLists.txt" "$CWD/cmake"/*.cmake) ;;
+    make) config_files=("$CWD/Makefile" "$CWD/makefile") ;;
+    ccs) config_files=("$CWD"/*.projectspec "$CWD"/.cproject) ;;
+    iar) config_files=("$CWD"/*.ewp) ;;
+    keil) config_files=("$CWD"/*.uvprojx "$CWD"/*.uvproj) ;;
+  esac
+
+  for f in "${config_files[@]}"; do
+    [ -f "$f" ] || continue
+    # Look for compiler references in the file
+    if grep -qiE 'tiarmclang|ti_arm_clang|TI_TOOLCHAIN' "$f" 2>/dev/null; then
+      echo "tiarmclang" && return
+    elif grep -qiE 'armcl|ti_arm_cgt|TI_CGT' "$f" 2>/dev/null; then
+      echo "armcl" && return
+    elif grep -qiE 'iccarm|IAR' "$f" 2>/dev/null; then
+      echo "iccarm" && return
+    elif grep -qiE 'armcc|ARMCC|armclang' "$f" 2>/dev/null; then
+      echo "armcc" && return
+    elif grep -qiE 'arm-none-eabi' "$f" 2>/dev/null; then
+      echo "arm-none-eabi-gcc" && return
+    elif grep -qiE 'aarch64-linux-gnu' "$f" 2>/dev/null; then
+      echo "aarch64-linux-gnu-gcc" && return
+    elif grep -qiE 'tricore-elf' "$f" 2>/dev/null; then
+      echo "tricore-elf-gcc" && return
+    fi
+  done
+  echo ""
+}
+
 COMPILER=$(detect_compiler)
 BUILD_SYSTEM=$(detect_build_system)
 SOURCES=$(find_sources)
+ELF_FILES=$(find_elf_files)
 BINARIES=$(find_binaries)
 ASM_FILES=$(find_asm_files)
-ARCH=$(detect_architecture)
+ARCH=$(detect_architecture "$ELF_FILES")
 CROSS_COMPILERS=$(detect_cross_compilers)
 LOCI_TARGET=$(resolve_loci_target "$ARCH" "$CROSS_COMPILERS")
+BUILD_COMPILER=$(detect_build_compiler "$BUILD_SYSTEM")
 
 # Determine LOCI compatibility
 if [ "$LOCI_TARGET" != "null" ]; then
@@ -122,11 +251,13 @@ fi
 
 jq -n \
   --arg compiler "$COMPILER" \
+  --arg build_compiler "$BUILD_COMPILER" \
   --arg build_system "$BUILD_SYSTEM" \
   --arg project_type "cpp" \
   --arg architecture "$ARCH" \
   --argjson source_files "$SOURCES" \
   --argjson binaries "$BINARIES" \
+  --argjson elf_files "$ELF_FILES" \
   --argjson asm_files "$ASM_FILES" \
   --argjson cross_compilers "$CROSS_COMPILERS" \
   --argjson loci_compatible "$LOCI_COMPATIBLE" \
@@ -135,11 +266,13 @@ jq -n \
   '{
     language_stack: ["cpp"],
     compiler: $compiler,
+    build_compiler: (if $build_compiler == "" then null else $build_compiler end),
     build_system: $build_system,
     project_type: $project_type,
     architecture: $architecture,
     source_files: $source_files,
     binaries: $binaries,
+    elf_files: $elf_files,
     asm_files: $asm_files,
     cross_compilers: $cross_compilers,
     loci_compatible: $loci_compatible,
