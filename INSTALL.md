@@ -80,7 +80,7 @@ Installed from `loci-plugin/skills/*/SKILL.md` with the asm-analyze CLI path sub
 
 | Command | Purpose |
 |---------|---------|
-| `/loci/analyze` | Full pipeline: compile → extract assembly → measure execution time and energy |
+| `/loci/exec-trace` | Full pipeline: compile → extract assembly → measure execution time and energy |
 | `/loci/slice` | Extract assembly blocks and symbols from an ELF binary |
 | `/loci/exec-behavior` | Call the timing MCP tool directly with a CSV of assembly blocks |
 | `/loci/profile-blocks` | Profile individual basic blocks for hotspot identification |
@@ -100,7 +100,7 @@ Copied from `loci-plugin/CLAUDE.md`. Provides Claude with architecture documenta
     ├── settings.json              ← hooks merged here (absolute paths)
     ├── CLAUDE.md                  ← LOCI architecture context for Claude
     └── commands/
-        ├── analyze.md             ← /loci/analyze slash command
+        ├── exec-trace.md          ← /loci/exec-trace slash command
         ├── slice.md               ← /loci/slice slash command
         ├── exec-behavior.md       ← /loci/exec-behavior slash command
         └── profile-blocks.md      ← /loci/profile-blocks slash command

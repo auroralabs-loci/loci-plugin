@@ -342,7 +342,7 @@ if [ "$ASM_ANALYZE_AVAILABLE" = true ]; then
 echo "  - Analyze ELF binaries locally via bundled asm-analyze CLI (symbols, assembly, blocks, diff)"
 fi
 echo ""
-echo "Slash commands: /loci/analyze"
+echo "Slash commands: /loci/exec-trace"
 echo ""
 echo "Restart Claude Code to activate."
 echo ""

@@ -110,7 +110,7 @@ All runtime state lives in `state/` (gitignored). Key files:
 
 Source templates in `skills/*/SKILL.md`:
 
-- `/loci/analyze` — compile → extract assembly → measure execution time/energy
+- `/loci/exec-trace` — compile → extract assembly → measure execution time/energy
 - `/loci/control-flow` — generate annotated CFGs for LLM analysis
 
 ## Debugging & Monitoring
