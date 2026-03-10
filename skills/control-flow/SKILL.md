@@ -3,17 +3,13 @@ description: Create annotated CFG (Control Flow Graphs) in text format optimised
 disable-model-invocation: true
 ---
 
-# LOCI Timing Analysis
+# LOCI Control Flow Analysis
 
-the LOCI_ASM_ANALYZE is in lib/asm_analyze.py
-
-you need to run it from within the .venv that is in the loci-plugin root directory
+Use the asm-analyze command from the LOCI session context (shown at session start as `asm-analyze command: <path>`).
 
 For example, to generate annotated CFG for a function called `apply_filter` from `filter.elf`:
 ```
-loci-plugin/.venv/bin/python3 loci-plugin/lib/asm_analyze.py extract-cfg \
-  --elf-path filter.elf \
-  --functions apply_filter
+<asm-analyze-cmd> extract-cfg --elf-path filter.elf --functions apply_filter
 ```
 The output is in a text format optimized for LLM analysis. Use it in step 5.
 
@@ -21,8 +17,8 @@ The output is in a text format optimized for LLM analysis. Use it in step 5.
 
 Determine which LOCI target architecture and compiler to use:
 
-1. **User's own compilation** — if the user already compiled targeting a LOCI architecture (aarch64, armv7e-m, tc3xx), reuse their binary. Skip directly to assembly extraction (step 2 of the full compilation path).
-2. **`state/pending-regression-check.json`** — if it exists and contains an `architecture` field, use that architecture.
+1. **User's own compilation** — if the user already compiled targeting a LOCI architecture, reuse their binary. Skip directly to CFG extraction (step 2 of the full compilation path).
+2. **Existing ELF/object files** — if the project already has .elf, .out, .o, or .axf files, use them directly. asm_analyze.py auto-detects architecture from the ELF.
 3. **No context** — ask the user which target, or default to aarch64.
 
 ### Cross-compilation defaults
@@ -48,11 +44,11 @@ If a previous `.o` exists in `.loci-build/<arch>/`, use incremental compilation:
    ```
 3. Diff `.o.prev` vs `.o` to find changed functions:
    ```
-   ${LOCI_ASM_ANALYZE} diff-elfs --elf-path .o.prev --comparing-elf-path .o --arch <arch>
+   <asm-analyze-cmd> diff-elfs --elf-path .o.prev --comparing-elf-path .o
    ```
 4. Generate CFG's (Control Flow Graphs) for only `modified`/`added` functions:
    ```
-   ${LOCI_ASM_ANALYZE} extract-cfg --elf-path .o --functions <changed_funcs> --arch <arch>
+   <asm-analyze-cmd> extract-cfg --elf-path .o --functions <changed_funcs>
    ```
    The output is in a text format optimized for LLM analysis. Use it in step 5.
 5. Report change analysis based on the generated graphs.
@@ -67,7 +63,7 @@ If no `.o` exists yet, fall through to full compilation.
    ```
 2. Extract annotated CFG's for analysis:
    ```
-   ${LOCI_ASM_ANALYZE} extract-cfg --elf-path <binary> --functions <func>
+   <asm-analyze-cmd> extract-cfg --elf-path <binary> --functions <func>
    ```
    The output is in a text format optimized for LLM analysis. Use it in step 3.
 3. Report analysis for selected functions based on the generated CFG's

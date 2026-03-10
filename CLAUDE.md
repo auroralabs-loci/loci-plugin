@@ -6,16 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Binary/ELF analysis — ALWAYS use asm_analyze.py
 
-When you need to disassemble, inspect symbols, or analyze ELF/object files, **always use `lib/asm_analyze.py`** instead of `objdump`, `readelf`, `nm`, `tiarmobjdump`, or any other disassembly tool. asm_analyze.py extracts assembly in the exact format needed for LOCI timing predictions.
+When you need to disassemble, inspect symbols, or analyze ELF/object files, **always use asm_analyze.py** instead of `objdump`, `readelf`, `nm`, `tiarmobjdump`, or any other disassembly tool. asm_analyze.py extracts assembly in the exact format needed for LOCI timing predictions.
 
-```bash
-# Run from the plugin's .venv:
-.venv/bin/python3 lib/asm_analyze.py extract-assembly --elf-path <file> [--functions fn1,fn2]
-.venv/bin/python3 lib/asm_analyze.py extract-symbols --elf-path <file>
-.venv/bin/python3 lib/asm_analyze.py diff-elfs --elf-path <old> --comparing-elf-path <new>
-.venv/bin/python3 lib/asm_analyze.py slice-elf --elf-path <file> [--output-types asm,symbols,blocks]
-.venv/bin/python3 lib/asm_analyze.py extract-cfg --elf-path <file> --functions fn1,fn2
-```
+**Use the exact `asm-analyze command:` path shown in the LOCI session context** (injected at session start). Available subcommands:
+- `<asm-analyze-cmd> extract-assembly --elf-path <file> [--functions fn1,fn2]`
+- `<asm-analyze-cmd> extract-symbols --elf-path <file>`
+- `<asm-analyze-cmd> diff-elfs --elf-path <old> --comparing-elf-path <new>`
+- `<asm-analyze-cmd> slice-elf --elf-path <file> [--output-types asm,symbols,blocks]`
+- `<asm-analyze-cmd> extract-cfg --elf-path <file> --functions fn1,fn2`
 
 **Architecture is auto-detected from the ELF.** You do not need to specify `--arch` unless the file has no ELF header info. If you do need to specify it, accepted values are:
 - **aarch64** group: `aarch64`, `arm64`, `cortex-a53`, `armv8-a`
