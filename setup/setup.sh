@@ -23,16 +23,22 @@ _auto_install() {
   local pkg="$1"
   if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
     brew install "$pkg"
+  elif [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+    # Windows: prefer non-admin installers (winget/scoop) before choco
+    if command -v winget >/dev/null 2>&1; then
+      winget install --accept-package-agreements --accept-source-agreements "$pkg"
+    elif command -v scoop >/dev/null 2>&1; then
+      scoop install "$pkg"
+    elif command -v choco >/dev/null 2>&1; then
+      echo -e "${YELLOW}  (choco may require elevated privileges)${NC}"
+      choco install -y "$pkg"
+    else
+      return 1
+    fi
   elif command -v apt-get >/dev/null 2>&1; then
     sudo apt-get install -y "$pkg"
   elif command -v dnf >/dev/null 2>&1; then
     sudo dnf install -y "$pkg"
-  elif command -v choco >/dev/null 2>&1; then
-    choco install -y "$pkg"
-  elif command -v winget >/dev/null 2>&1; then
-    winget install --accept-package-agreements --accept-source-agreements "$pkg"
-  elif command -v scoop >/dev/null 2>&1; then
-    scoop install "$pkg"
   else
     return 1
   fi
@@ -47,12 +53,16 @@ if ! command -v jq >/dev/null 2>&1; then
   echo -e "${GREEN}jq installed${NC}"
 fi
 
-if ! command -v objdump >/dev/null 2>&1 || ! command -v readelf >/dev/null 2>&1; then
-  echo -e "${YELLOW}binutils not found — installing...${NC}"
-  if ! _auto_install binutils; then
-    echo -e "${YELLOW}Failed to install binutils. Some ELF analysis features may be unavailable.${NC}"
-  else
-    echo -e "${GREEN}binutils installed${NC}"
+# binutils (objdump/readelf) — only needed on Linux/macOS for optional features.
+# On Windows, asm_analyze.py reads ELFs via Python (asmslicer) and does not need binutils.
+if [[ "$(uname -s)" != MINGW* && "$(uname -s)" != MSYS* ]]; then
+  if ! command -v objdump >/dev/null 2>&1 || ! command -v readelf >/dev/null 2>&1; then
+    echo -e "${YELLOW}binutils not found — installing...${NC}"
+    if ! _auto_install binutils; then
+      echo -e "${YELLOW}Failed to install binutils. Some ELF analysis features may be unavailable.${NC}"
+    else
+      echo -e "${GREEN}binutils installed${NC}"
+    fi
   fi
 fi
 
@@ -61,13 +71,29 @@ fi
 # Write the result to state/loci-paths.json so asm_analyze.py can prepend the right dir.
 _detect_cxxfilt() {
   local candidates=()
-  # Known keg-only brew paths (arm64 and x86 Mac, Linux standard)
-  candidates+=(
-    "/opt/homebrew/opt/binutils/bin"
-    "/usr/local/opt/binutils/bin"
-    "/usr/bin"
-    "/usr/local/bin"
-  )
+  if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+    # MSYS2/MinGW paths; also check project-local cross-compiler toolchains
+    candidates+=(
+      "/mingw64/bin"
+      "/mingw32/bin"
+      "/ucrt64/bin"
+      "/usr/bin"
+    )
+    # Check well-known Windows cross-compiler locations for c++filt
+    for d in /c/ti/gcc-arm-none-eabi/bin \
+             "/c/Program Files/GNU Arm Embedded Toolchain"*/bin \
+             "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin; do
+      [ -d "$d" ] && candidates+=("$d")
+    done
+  else
+    # Known keg-only brew paths (arm64 and x86 Mac, Linux standard)
+    candidates+=(
+      "/opt/homebrew/opt/binutils/bin"
+      "/usr/local/opt/binutils/bin"
+      "/usr/bin"
+      "/usr/local/bin"
+    )
+  fi
   # Also check wherever c++filt currently resolves
   local cur
   cur="$(command -v c++filt 2>/dev/null)"
@@ -118,14 +144,38 @@ fi
 
 echo -e "${GREEN}OK${NC}"
 
-# 2. Check C++ toolchain
+# 2. Check C++ toolchain (including vendor/embedded compilers)
 echo -n "Checking C++ compiler... "
+_found_compiler=""
 if command -v g++ >/dev/null 2>&1; then
-  echo -e "${GREEN}g++ $(g++ --version | head -1)${NC}"
+  _found_compiler="g++ $(g++ --version | head -1)"
 elif command -v clang++ >/dev/null 2>&1; then
-  echo -e "${GREEN}clang++ $(clang++ --version | head -1)${NC}"
+  _found_compiler="clang++ $(clang++ --version | head -1)"
+elif command -v tiarmclang >/dev/null 2>&1; then
+  _found_compiler="tiarmclang (TI ARM Clang)"
+elif command -v armcl >/dev/null 2>&1; then
+  _found_compiler="armcl (TI ARM CGT)"
+elif command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+  _found_compiler="arm-none-eabi-gcc $(arm-none-eabi-gcc --version 2>/dev/null | head -1)"
+fi
+# Windows: also check well-known install directories if nothing on PATH
+if [[ -z "$_found_compiler" && ("$(uname -s)" == MINGW* || "$(uname -s)" == MSYS*) ]]; then
+  for _bin in /c/ti/ticlang/bin/tiarmclang.exe \
+              /c/ti/ccs*/tools/compiler/ti-cgt-armllvm_*/bin/tiarmclang.exe \
+              /c/ti/ti-cgt-armllvm_*/bin/tiarmclang.exe \
+              /c/ti/ccs*/tools/compiler/ti-cgt-arm_*/bin/armcl.exe \
+              /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe \
+              "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-gcc.exe; do
+    if [ -x "$_bin" ]; then
+      _found_compiler="$(basename "$_bin" .exe) ($(dirname "$_bin"))"
+      break
+    fi
+  done
+fi
+if [ -n "$_found_compiler" ]; then
+  echo -e "${GREEN}${_found_compiler}${NC}"
 else
-  echo -e "${YELLOW}No C++ compiler found (g++/clang++)${NC}"
+  echo -e "${YELLOW}No C++ compiler found${NC}"
 fi
 
 # 3. Permissions

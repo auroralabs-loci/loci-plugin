@@ -5,6 +5,53 @@
 set -euo pipefail
 
 CWD="${1:-.}"
+IS_WINDOWS=false
+[[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]] && IS_WINDOWS=true
+
+# Windows: search well-known install directories for vendor compilers not on PATH.
+# Returns the full path to the compiler binary, or fails.
+_find_windows_compiler() {
+  $IS_WINDOWS || return 1
+  local name="$1"
+  local candidates=()
+  case "$name" in
+    tiarmclang)
+      candidates=(
+        /c/ti/ticlang/bin/tiarmclang.exe
+        /c/ti/ccs*/tools/compiler/ti-cgt-armllvm_*/bin/tiarmclang.exe
+        /c/ti/ti-cgt-armllvm_*/bin/tiarmclang.exe
+      ) ;;
+    armcl)
+      candidates=(
+        /c/ti/ccs*/tools/compiler/ti-cgt-arm_*/bin/armcl.exe
+        /c/ti/ti-cgt-arm_*/bin/armcl.exe
+      ) ;;
+    iccarm)
+      candidates=(
+        "/c/Program Files/IAR Systems/Embedded Workbench"*/arm/bin/iccarm.exe
+        "/c/Program Files (x86)/IAR Systems/Embedded Workbench"*/arm/bin/iccarm.exe
+      ) ;;
+    armcc)
+      candidates=(
+        "/c/Keil_v5/ARM/ARMCC/bin/armcc.exe"
+        "/c/Keil_v5/ARM/ARMCLANG/bin/armclang.exe"
+        "/c/Program Files/Keil_v5/ARM/ARMCC/bin/armcc.exe"
+      ) ;;
+    arm-none-eabi-gcc)
+      candidates=(
+        /c/ti/gcc-arm-none-eabi/bin/arm-none-eabi-gcc.exe
+        "/c/Program Files/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-gcc.exe
+        "/c/Program Files (x86)/GNU Arm Embedded Toolchain"*/bin/arm-none-eabi-gcc.exe
+      ) ;;
+  esac
+  for candidate in "${candidates[@]}"; do
+    if [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
 # Detect C++ compiler (including vendor/embedded toolchains)
 detect_compiler() {
@@ -19,6 +66,15 @@ detect_compiler() {
   command -v arm-none-eabi-gcc >/dev/null 2>&1 && echo "arm-none-eabi-gcc" && return
   command -v aarch64-linux-gnu-gcc >/dev/null 2>&1 && echo "aarch64-linux-gnu-gcc" && return
   command -v tricore-elf-gcc >/dev/null 2>&1 && echo "tricore-elf-gcc" && return
+  # Windows: check well-known install directories
+  if $IS_WINDOWS; then
+    for comp in tiarmclang armcl iccarm armcc arm-none-eabi-gcc; do
+      if _find_windows_compiler "$comp" >/dev/null 2>&1; then
+        echo "$comp"
+        return
+      fi
+    done
+  fi
   echo "unknown"
 }
 
@@ -157,6 +213,14 @@ detect_cross_compilers() {
   command -v armcl >/dev/null 2>&1 && compilers+=("cortexm")
   command -v iccarm >/dev/null 2>&1 && compilers+=("cortexm")
   command -v armcc >/dev/null 2>&1 && compilers+=("cortexm")
+  # Windows: also check well-known install directories
+  if $IS_WINDOWS; then
+    _find_windows_compiler tiarmclang >/dev/null 2>&1 && compilers+=("cortexm")
+    _find_windows_compiler armcl >/dev/null 2>&1 && compilers+=("cortexm")
+    _find_windows_compiler iccarm >/dev/null 2>&1 && compilers+=("cortexm")
+    _find_windows_compiler armcc >/dev/null 2>&1 && compilers+=("cortexm")
+    _find_windows_compiler arm-none-eabi-gcc >/dev/null 2>&1 && compilers+=("cortexm")
+  fi
   if [ ${#compilers[@]} -eq 0 ]; then
     echo '[]'
   else
@@ -237,6 +301,12 @@ CROSS_COMPILERS=$(detect_cross_compilers)
 LOCI_TARGET=$(resolve_loci_target "$ARCH" "$CROSS_COMPILERS")
 BUILD_COMPILER=$(detect_build_compiler "$BUILD_SYSTEM")
 
+# Resolve full path for compilers discovered via Windows search (not on PATH)
+COMPILER_PATH=""
+if $IS_WINDOWS && [ "$COMPILER" != "unknown" ] && ! command -v "$COMPILER" >/dev/null 2>&1; then
+  COMPILER_PATH=$(_find_windows_compiler "$COMPILER" 2>/dev/null || true)
+fi
+
 # Determine LOCI compatibility
 if [ "$LOCI_TARGET" != "null" ]; then
   LOCI_COMPATIBLE="true"
@@ -246,6 +316,7 @@ fi
 
 jq -n \
   --arg compiler "$COMPILER" \
+  --arg compiler_path "$COMPILER_PATH" \
   --arg build_compiler "$BUILD_COMPILER" \
   --arg build_system "$BUILD_SYSTEM" \
   --arg project_type "cpp" \
@@ -261,6 +332,7 @@ jq -n \
   '{
     language_stack: ["cpp"],
     compiler: $compiler,
+    compiler_path: (if $compiler_path == "" then null else $compiler_path end),
     build_compiler: (if $build_compiler == "" then null else $build_compiler end),
     build_system: $build_system,
     project_type: $project_type,
