@@ -1,6 +1,6 @@
 {
   "name": "loci-plugin",
-  "version": "0.9.10",
+  "version": "0.9.11",
   "description": "LOCI Execution-Aware Plugin — uses a Large Code Language Model (LCLM) trained on real hardware execution traces to predict execution time, energy, and performance regressions for compiled binaries (C, C++, Rust, GoLang) at assembly-block granularity. Includes local ELF binary asm-analyze CLI for symbols, assembly, blocks, callgraph, and diff.",
   "author": {
     "name": "AuroraLabs"

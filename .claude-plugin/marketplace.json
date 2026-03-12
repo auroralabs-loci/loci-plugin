@@ -7,13 +7,9 @@
     "plugins": [
         {
             "name": "loci-plugin",
-            "source": {
-                "source": "url",
-                "url": "https://github.com/auroralabs-loci/loci-plugin.git",
-                "ref": "production"
-            },
+            "source": ".",
             "description": "LOCI Execution-Aware Plugin — uses a Large Code Language Model (LCLM) trained on real hardware execution traces to predict execution time, energy, and performance regressions for compiled binaries (C, C++, Rust, GoLang) at assembly-block granularity. Includes local ELF binary asm-analyze CLI for symbols, assembly, blocks, callgraph, and diff.",
-            "version": "0.9.10",
+            "version": "0.9.11",
             "author": {
                 "name": "AuroraLabs"
             },
