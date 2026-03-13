@@ -317,40 +317,52 @@ if [ "$ASM_ANALYZE_AVAILABLE" = true ]; then
 fi
 
 # 8. Register hooks with Claude Code
+# When installed as a plugin, Claude Code reads hooks.json directly — no need
+# to write to settings.json.  Skip this step if we're running from the plugin
+# cache (the ../../.. heuristic would resolve to a wrong path there).
 echo -n "Registering hooks... "
-PROJECT_ROOT="$(cd "${PLUGIN_DIR}/../../.." && pwd)"
-SETTINGS_FILE="${PROJECT_ROOT}/.claude/settings.json"
-mkdir -p "${PROJECT_ROOT}/.claude"
-
-if [ -f "$SETTINGS_FILE" ] && grep -q "capture-action.sh" "$SETTINGS_FILE" 2>/dev/null; then
-  echo -e "${GREEN}already registered${NC}"
+if echo "${PLUGIN_DIR}" | grep -q '\.claude/plugins'; then
+  echo -e "${GREEN}plugin mode — hooks.json used directly${NC}"
 else
-  # Replace plugin root variable with absolute path using jq
-  HOOKS_CONFIG=$(jq --arg pd "${PLUGIN_DIR}" '
-    def replace_plugin_root:
-      if type == "string" then
-        gsub("\\$\\{CLAUDE_PLUGIN_ROOT\\}"; $pd) |
-        gsub("\\$CLAUDE_PLUGIN_ROOT"; $pd)
-      elif type == "array" then map(replace_plugin_root)
-      elif type == "object" then to_entries | map(.value |= replace_plugin_root) | from_entries
-      else .
-      end;
-    replace_plugin_root
-  ' "${PLUGIN_DIR}/hooks/hooks.json")
-
-  if [ -f "$SETTINGS_FILE" ]; then
-    # Merge hooks into existing settings.json
-    HOOKS_ONLY=$(echo "$HOOKS_CONFIG" | jq '.hooks')
-    if jq --argjson hooks "$HOOKS_ONLY" '. + {hooks: $hooks}' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
-      mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
-      echo -e "${GREEN}OK (merged into existing settings.json)${NC}"
-    else
-      rm -f "${SETTINGS_FILE}.tmp"
-      echo -e "${YELLOW}FAILED to merge — add hooks manually${NC}"
-    fi
+  PROJECT_ROOT="$(cd "${PLUGIN_DIR}/../../.." 2>/dev/null && pwd || echo "")"
+  # Skip if PROJECT_ROOT is empty, a filesystem root, or not writable
+  if [ -z "$PROJECT_ROOT" ] || [ "$PROJECT_ROOT" = "/" ] || [[ "$PROJECT_ROOT" =~ ^/[a-zA-Z]/?$ ]] || ! [ -w "$PROJECT_ROOT" ]; then
+    echo -e "${YELLOW}skipped (project root not detected)${NC}"
   else
-    echo "$HOOKS_CONFIG" > "$SETTINGS_FILE"
-    echo -e "${GREEN}OK${NC}"
+    SETTINGS_FILE="${PROJECT_ROOT}/.claude/settings.json"
+    mkdir -p "${PROJECT_ROOT}/.claude"
+
+    if [ -f "$SETTINGS_FILE" ] && grep -q "capture-action.sh" "$SETTINGS_FILE" 2>/dev/null; then
+      echo -e "${GREEN}already registered${NC}"
+    else
+      # Replace plugin root variable with absolute path using jq
+      HOOKS_CONFIG=$(jq --arg pd "${PLUGIN_DIR}" '
+        def replace_plugin_root:
+          if type == "string" then
+            gsub("\\$\\{CLAUDE_PLUGIN_ROOT\\}"; $pd) |
+            gsub("\\$CLAUDE_PLUGIN_ROOT"; $pd)
+          elif type == "array" then map(replace_plugin_root)
+          elif type == "object" then to_entries | map(.value |= replace_plugin_root) | from_entries
+          else .
+          end;
+        replace_plugin_root
+      ' "${PLUGIN_DIR}/hooks/hooks.json")
+
+      if [ -f "$SETTINGS_FILE" ]; then
+        # Merge hooks into existing settings.json
+        HOOKS_ONLY=$(echo "$HOOKS_CONFIG" | jq '.hooks')
+        if jq --argjson hooks "$HOOKS_ONLY" '. + {hooks: $hooks}' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" 2>/dev/null; then
+          mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+          echo -e "${GREEN}OK (merged into existing settings.json)${NC}"
+        else
+          rm -f "${SETTINGS_FILE}.tmp"
+          echo -e "${YELLOW}FAILED to merge — add hooks manually${NC}"
+        fi
+      else
+        echo "$HOOKS_CONFIG" > "$SETTINGS_FILE"
+        echo -e "${GREEN}OK${NC}"
+      fi
+    fi
   fi
 fi
 

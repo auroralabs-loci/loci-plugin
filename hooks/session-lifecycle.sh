@@ -84,6 +84,8 @@ case "$HOOK_EVENT" in
         LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python3"
       elif [ -x "${PLUGIN_DIR}/.venv/bin/python" ]; then
         LOCI_PYTHON="${PLUGIN_DIR}/.venv/bin/python"
+      elif [ -x "${PLUGIN_DIR}/.venv/Scripts/python.exe" ]; then
+        LOCI_PYTHON="${PLUGIN_DIR}/.venv/Scripts/python.exe"
       fi
     fi
 

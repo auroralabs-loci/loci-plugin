@@ -13,22 +13,78 @@ Subcommands:
   blocks-to-timing   — Transform blocks CSV to timing-backend CSV format
 """
 
+# ---------------------------------------------------------------------------
+# Venv auto-bootstrap: re-launch under the plugin's .venv Python if needed.
+# This runs before any non-stdlib imports so it works with system Python.
+# ---------------------------------------------------------------------------
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+_PLUGIN_DIR = Path(__file__).resolve().parent.parent
+_VENV_DIR = _PLUGIN_DIR / ".venv"
+
+
+def _find_venv_python():
+    """Return the path to the venv Python, or None."""
+    for p in [
+        _VENV_DIR / "Scripts" / "python.exe",  # Windows
+        _VENV_DIR / "bin" / "python3",          # Unix
+        _VENV_DIR / "bin" / "python",           # Unix fallback
+    ]:
+        if p.is_file():
+            return str(p)
+    return None
+
+
+def _in_venv():
+    """Check whether we are already running inside the plugin's venv."""
+    try:
+        venv = str(_VENV_DIR.resolve())
+        return str(Path(sys.prefix).resolve()).startswith(venv)
+    except (OSError, ValueError):
+        return False
+
+
+# Guard: only attempt re-exec once (env var prevents infinite loop).
+if not _in_venv() and not os.environ.get("_LOCI_BOOTSTRAP"):
+    os.environ["_LOCI_BOOTSTRAP"] = "1"
+    vp = _find_venv_python()
+    if vp is None:
+        # Venv missing — try running setup.sh to create it
+        setup = _PLUGIN_DIR / "setup" / "setup.sh"
+        if setup.is_file():
+            subprocess.run(
+                ["bash", str(setup)],
+                capture_output=True, timeout=300,
+            )
+            vp = _find_venv_python()
+    if vp:
+        result = subprocess.run([vp] + sys.argv)
+        sys.exit(result.returncode)
+    else:
+        print(json.dumps({
+            "error": "LOCI venv not found and setup failed. "
+                     "Run setup.sh manually, or install uv and retry.",
+        }))
+        sys.exit(1)
+
+# ---------------------------------------------------------------------------
+# Normal imports (now guaranteed to run inside the venv)
+# ---------------------------------------------------------------------------
 import argparse
 import csv
 import io
-import json
 import logging
-import os
 import re
-import sys
 import tempfile
 import traceback
-from pathlib import Path
 
 # Prepend the cxxfilt_dir detected by setup.sh (written to state/loci-paths.json).
 # This ensures the GNU c++filt (which supports -r) is found before any
 # system-installed version that may not (e.g. Apple's /usr/bin/c++filt).
-_PLUGIN_DIR = Path(__file__).parent.parent
 _PATHS_FILE = _PLUGIN_DIR / "state" / "loci-paths.json"
 try:
     _loci_paths = json.loads(_PATHS_FILE.read_text())
